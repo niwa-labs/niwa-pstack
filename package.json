@@ -1,0 +1,28 @@
+{
+  "name": "pstack-workspace",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "devDependencies": {
+    "@types/bun": "^1.4.4",
+    "typescript": "~5.9.3"
+  },
+  "overrides": {
+    "@niwa-labs/core": "link:../niwa/packages/core",
+    "@niwa-labs/evidence": "link:../plugins/packages/evidence",
+    "@niwa-labs/flow": "link:../niwa/packages/flow",
+    "@niwa-labs/flow-code": "link:../niwa/packages/flow-code",
+    "@niwa-labs/forge": "link:../plugins/packages/forge",
+    "@niwa-labs/git": "link:../niwa/packages/git",
+    "@niwa-labs/plan": "link:../plugins/packages/plan",
+    "@niwa-labs/plugin": "link:../niwa/packages/plugin",
+    "@niwa-labs/proc": "link:../niwa/packages/proc",
+    "@niwa-labs/script": "link:../niwa/packages/script",
+    "@niwa-labs/watch": "link:../plugins/packages/watch"
+  }
+}
