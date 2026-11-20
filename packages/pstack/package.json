@@ -12,6 +12,7 @@
     "@niwa-labs/forge": "*",
     "@niwa-labs/plan": "*",
     "@niwa-labs/plugin": "*",
+    "@niwa-labs/script": "*",
     "@niwa-labs/watch": "*"
   }
 }

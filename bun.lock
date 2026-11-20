@@ -19,6 +19,7 @@
         "@niwa-labs/forge": "*",
         "@niwa-labs/plan": "*",
         "@niwa-labs/plugin": "*",
+        "@niwa-labs/script": "*",
         "@niwa-labs/watch": "*",
       },
     },
@@ -50,6 +51,8 @@
     "@niwa-labs/plugin": ["@niwa-labs/plugin@link:../niwa/packages/plugin", {}],
 
     "@niwa-labs/pstack": ["@niwa-labs/pstack@workspace:packages/pstack"],
+
+    "@niwa-labs/script": ["@niwa-labs/script@link:../niwa/packages/script", {}],
 
     "@niwa-labs/watch": ["@niwa-labs/watch@link:../plugins/packages/watch", {}],
 
