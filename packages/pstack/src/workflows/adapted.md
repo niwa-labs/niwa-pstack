@@ -648,7 +648,7 @@ Keep detailed evidence in the run output. What goes back to the reporter stays c
 
 ## 9. Report the repro outcome
 
-Answer the outcome in your result: whether it reproduced, and what each of the two runs showed. The workflow tells the owner through `benny.channel.notify`, and says nothing to the reporter for `Could not reproduce` or `Blocked`.
+Answer the outcome in your result: whether it reproduced, and what each of the two runs showed. The workflow tells the owner once through `benny.channel.notify`, whatever the outcome, in the report's own thread when the report has a `source`.
 
 For a confirmed repro the workflow goes on to the fix. There is no rejection window, so correct the repro yourself if the setup or the interpretation was wrong.
 
