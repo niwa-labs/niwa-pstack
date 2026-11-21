@@ -13,11 +13,12 @@
 //
 // `--upstream` is needed only when the mapping has ranges at an upstream commit other than the snapshot's.
 
-import { readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { writeFileSync } from "node:fs";
+import { resolve } from "node:path";
 
-import { Git, OursTexts, UpstreamTexts, WORKTREE, accept, advance, analyze, assemble, formatMapping, formatReport, jsonOf, parseMapping, summaryOf, unreadable, verifyTextsIn, writeTexts } from "../src/mapping/index.ts";
-import { MAPPING_FILE, PACKAGE_DIR, TEXTS_DIR, UPSTREAM_DIR, refreshUpstream } from "../src/upstream.ts";
+import { Git, WORKTREE, differingTexts, formatReport, openMap, recordMap, summaryOf, unreadable, writeAssembled } from "../src/mapping/index.ts";
+import type { ToolContext } from "../src/mapping/index.ts";
+import { PACKAGE_DIR, PACKAGE_PATHS, refreshUpstream } from "../src/upstream.ts";
 
 const [command, ...rest] = process.argv.slice(2);
 
@@ -44,20 +45,19 @@ const text = (flag: string): string | undefined => {
   const value = flags.get(flag);
   return typeof value === "string" ? value : undefined;
 };
-const repoRoot = new Git(PACKAGE_DIR).out(["rev-parse", "--show-toplevel"]).trim();
-const open = () => {
-  const upstreamCheckout = text("--upstream");
-  const upstream = new UpstreamTexts(UPSTREAM_DIR, upstreamCheckout === undefined ? undefined : resolve(upstreamCheckout));
-  const ours = new OursTexts(repoRoot, flags.has("--worktree") ? WORKTREE : (text("--head") ?? "HEAD"));
-  const mapping = parseMapping(readFileSync(text("--map") ?? MAPPING_FILE, "utf8"));
-  return { upstream, ours, mapping, report: { ...analyze(mapping, upstream, ours), texts: verifyTextsIn(mapping, upstream, ours, TEXTS_DIR) } };
-};
+const context = (): ToolContext => ({
+  paths: PACKAGE_PATHS,
+  root: new Git(PACKAGE_DIR).out(["rev-parse", "--show-toplevel"]).trim(),
+  ...(text("--upstream") === undefined ? {} : { checkout: text("--upstream") as string }),
+  head: flags.has("--worktree") ? WORKTREE : (text("--head") ?? "HEAD"),
+  ...(text("--map") === undefined ? {} : { map: text("--map") as string }),
+});
 
 if (command === "check") {
   const out = text("--out");
-  let opened: ReturnType<typeof open>;
+  let opened: ReturnType<typeof openMap>;
   try {
-    opened = open();
+    opened = openMap(context());
   } catch (error) {
     // A map that cannot be read at all (bad JSON, a schema error, a commit that is not there) is a problem of the
     // map, said as one: whoever reads the numbers gets a line to act on, not a crash.
@@ -71,35 +71,20 @@ if (command === "check") {
   console.log(flags.has("--summary") ? JSON.stringify(summaryOf(report)) : formatReport(report));
   process.exit(report.problems.length === 0 && report.texts.length === 0 ? 0 : 1);
 } else if (command === "advance" || command === "accept") {
-  const { mapping, report } = open();
-  if (report.problems.length > 0) throw new Error(`the mapping has ${String(report.problems.length)} problems: run check`);
-  const next = command === "advance" ? advance(mapping, report) : accept(mapping, report, words);
-  writeFileSync(MAPPING_FILE, formatMapping(next));
-  console.log(`${command === "advance" ? "advanced" : "accepted"}: ${String(next.entries.filter((one, index) => JSON.stringify(one) !== JSON.stringify(mapping.entries[index])).length)} entries recorded`);
+  const changed = recordMap(context(), command === "advance" ? "unchanged" : words);
+  console.log(`${command === "advance" ? "advanced" : "accepted"}: ${String(changed)} entries recorded`);
 } else if (command === "assemble") {
-  const { mapping, upstream, ours } = open();
-  const made = assemble(mapping, upstream, ours);
   if (flags.has("--check")) {
-    const wrong = made.filter((one) => {
-      try {
-        return readFileSync(join(TEXTS_DIR, `${one.name}.json`), "utf8") !== jsonOf(one);
-      } catch {
-        return true;
-      }
-    });
+    const wrong = differingTexts(context());
     if (wrong.length > 0) {
-      console.error(`these texts differ from the mapping: ${wrong.map((one) => one.name).join(", ")}`);
+      console.error(`these texts differ from the mapping: ${wrong.join(", ")}`);
       process.exit(1);
     }
-    console.log(`${String(made.length)} texts match the mapping`);
-  } else {
-    writeTexts(made, TEXTS_DIR);
-    console.log(`${String(made.length)} texts written`);
-  }
+    console.log("the texts match the mapping");
+  } else console.log(`${String(writeAssembled(context()))} texts written`);
 } else if (command === "refresh") {
   const [checkout, commit] = words;
   if (checkout === undefined) usage();
   const source = refreshUpstream(resolve(checkout as string), commit === undefined ? {} : { commit });
   console.log(`snapshot taken at ${source.commit}`);
 } else usage();
-

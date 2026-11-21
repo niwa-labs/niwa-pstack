@@ -14,3 +14,5 @@ export type { Kind, Ref } from "./schema.ts";
 export { OursTexts, UpstreamTexts, WORKTREE } from "./sources.ts";
 export type { Texts } from "./sources.ts";
 export { verifyTexts, verifyTextsIn } from "./verify.ts";
+export { assembledTexts, differingTexts, openMap, recordMap, writeAssembled } from "./tool.ts";
+export type { ToolContext } from "./tool.ts";

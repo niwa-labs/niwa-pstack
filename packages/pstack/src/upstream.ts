@@ -13,17 +13,38 @@ import { basename, dirname, join } from "node:path";
 
 import { Git } from "./mapping/git.ts";
 
+/** Where the parts of a package folder that the upstream map works on are: its snapshot, its texts and its mapping. */
+export interface PackagePaths {
+  /** The folder of the package. */
+  readonly dir: string;
+  /** Where the snapshot lives. */
+  readonly upstream: string;
+  /** Where the texts the scripts import live. */
+  readonly texts: string;
+  /** Where the mapping of the snapshot lives, in the snapshot's folder. */
+  readonly mapping: string;
+}
+
+/** The paths of the package folder `dir`: the folder of this package, or the same folder in a worktree of its repository. */
+export function pathsIn(dir: string): PackagePaths {
+  const upstream = join(dir, "upstream");
+  return { dir, upstream, texts: join(dir, "src", "workflows", "texts"), mapping: join(upstream, "mapping.json") };
+}
+
 /** The folder of this package. */
 export const PACKAGE_DIR = join(import.meta.dir, "..");
 
+/** The paths of this package. */
+export const PACKAGE_PATHS = pathsIn(PACKAGE_DIR);
+
 /** Where the snapshot lives in this package. */
-export const UPSTREAM_DIR = join(PACKAGE_DIR, "upstream");
+export const UPSTREAM_DIR = PACKAGE_PATHS.upstream;
 
 /** Where the texts the scripts import live in this package. */
-export const TEXTS_DIR = join(PACKAGE_DIR, "src", "workflows", "texts");
+export const TEXTS_DIR = PACKAGE_PATHS.texts;
 
 /** Where the mapping of the snapshot lives, in the snapshot's folder. */
-export const MAPPING_FILE = join(UPSTREAM_DIR, "mapping.json");
+export const MAPPING_FILE = PACKAGE_PATHS.mapping;
 
 /**
  * Where the snapshot's files come from in an upstream checkout (the `pstack` folder of `cursor/plugins`): a folder of
