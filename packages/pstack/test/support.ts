@@ -12,7 +12,8 @@ import { action, actionRef, grant, principalOf } from "@niwa-labs/core";
 import { evidence } from "@niwa-labs/evidence";
 import { forge, secret } from "@niwa-labs/forge";
 import { plan } from "@niwa-labs/plan";
-import type { CallerBinding, Plugin } from "@niwa-labs/plugin";
+import { AGENT } from "@niwa-labs/plugin";
+import type { AgentOffer, CallerBinding, Plugin } from "@niwa-labs/plugin";
 import { connect, connectAsOwner, createNiwa, eventually, git, plugin, requests, stubAction, tempDir, timers, workflow } from "@niwa-labs/testing";
 import type { Host } from "@niwa-labs/testing";
 
@@ -102,6 +103,8 @@ export interface PstackHost {
   gitlab: FakeGitLab;
   project: FakeProject;
   harnesses: Harnesses;
+  /** The agents the plugins offered to the agents module, as a stand-in for it read them. */
+  agents: AgentOffer[];
   /** How the pipelines of the next pull requests end; a test may change it as it goes. */
   ci: { head: string; mergeResult: string };
   /** The fixture a run of the suite or the entry is given. */
@@ -236,6 +239,8 @@ function withCi(gitlab: FakeGitLab, project: FakeProject, repo: string, ci: { he
 export interface PstackHostOptions {
   /** The binding evidence binds its callers with. Default: pstack's, over the fake sessions. */
   readonly bind?: CallerBinding;
+  /** Benny: on unless `false`. */
+  readonly benny?: false;
   /** How the pipelines a new pull request gets end: its head's and its merge result's. Default: both succeed. */
   readonly ci?: { readonly head?: string; readonly mergeResult?: string };
   /** More plugins, installed before the workflow module. */
@@ -268,6 +273,7 @@ export async function pstackHost(options: PstackHostOptions = {}): Promise<Pstac
   const harnesses = new Harnesses();
   const agents = fakeAgents(home, harnesses);
   const sessions = fakeSessions(home, harnesses);
+  const offeredAgents: AgentOffer[] = [];
   const ci = { head: options.ci?.head ?? "success", mergeResult: options.ci?.mergeResult ?? "success" };
   const host = createNiwa({ home });
   host.use(
@@ -283,7 +289,11 @@ export async function pstackHost(options: PstackHostOptions = {}): Promise<Pstac
     evidence({ bind: options.bind ?? addressingOf([sessions]) }),
     plan(),
     ...(options.plugins ?? []),
-    pstackPlugin({ roles: ROLES, forges: [FORGE_HOST] }),
+    pstackPlugin({ roles: ROLES, forges: [FORGE_HOST], ...(options.benny === false ? {} : { benny: { repo: { host: FORGE_HOST, path: PROJECT, local: repo } } }) }),
+    // The agents module reads the agents a plugin offers; this one only keeps them.
+    plugin("agents", (api) => {
+      offeredAgents.push(...api.offers(AGENT).map((one) => one.value));
+    }),
     workflow({ agents }),
   );
   await host.serve();
@@ -297,6 +307,7 @@ export async function pstackHost(options: PstackHostOptions = {}): Promise<Pstac
     gitlab,
     project,
     harnesses,
+    agents: offeredAgents,
     ci,
     fixture: { repo: { host: FORGE_HOST, path: PROJECT, local: repo }, worktrees, base: "main" },
     answer: async (ids) => {
@@ -413,6 +424,8 @@ export function defaultAnswers(made: PstackHost): Answers {
       commit(call);
       return { intent: "Add the page", state: "half done", verified: [], next: "finish the page", files: ["page.md"], gotchas: [] };
     },
+    "benny-triage:triage": () => ({ verdict: "bug", owner: "the README", summary: "The README names the wrong service." }),
+    "benny-reproduce:reproduce": () => ({ reproduced: true, runs: ["The README says payroll.", "It still says payroll."] }),
     "session-pickup:resume": () => ({ where: "Both pull requests merged.", verified: ["changelog", "contributing"], next: "Nothing is left." }),
   };
 }

@@ -7,7 +7,7 @@ import { afterEach, expect, test } from "bun:test";
 import { PrMerged } from "@niwa-labs/forge/records";
 import { eventually } from "@niwa-labs/testing";
 
-import { GATED } from "../src/catalog.ts";
+import { gatedOf } from "../src/catalog.ts";
 import { builtins, defaultAnswers, pstackHost, recordsOf, registeredAll, syncErrors } from "./support.ts";
 import type { Answers, PstackHost } from "./support.ts";
 
@@ -20,7 +20,7 @@ async function served(change: (answers: Answers) => Answers = (answers) => answe
   const made = await pstackHost();
   made.harnesses.answers = change(defaultAnswers(made));
   hosts.push(made);
-  await registeredAll(made.host, GATED.length + 1);
+  await registeredAll(made.host, gatedOf(true).length + 1);
   return made;
 }
 
@@ -53,7 +53,7 @@ const startSuite = async (made: PstackHost) => {
 test("a first install shows the entry and the playbooks as candidates and runs none of them", async () => {
   const made = await served();
   const all = await builtins(made.host);
-  for (const { name } of GATED) {
+  for (const { name } of gatedOf(true)) {
     expect((await versionsOf(made, all[name]?.id ?? "")).map((one) => one.candidate)).toEqual([true]);
     await expect(made.host.call("workflow.start" as never, { id: all[name]?.id, args: {} } as never)).rejects.toThrow("candidate");
   }
@@ -81,14 +81,14 @@ test("the suite tries the set by its versions and promotes the candidates in one
   expect(promoted).toHaveLength(1);
   const data = promoted[0]?.data as { run: string; versions: Array<{ workflow: string; version: string }> };
   expect(data.run).toBe(ran.run);
-  expect(data.versions.map((one) => one.workflow).sort()).toEqual(GATED.map(({ name }) => all[name]?.id ?? "").sort());
+  expect(data.versions.map((one) => one.workflow).sort()).toEqual(gatedOf(true).map(({ name }) => all[name]?.id ?? "").sort());
 
-  // The plan with the go landed both its pull requests on the forge and the stack's bottom landed; the stack's top
-  // and the six changes the other playbooks carried stay open, for nothing but shipping merges.
+  // The plan with the go landed both its pull requests on the forge and the stack's bottom landed; the stack's top,
+  // the six changes the other playbooks carried and Benny's fix stay open, for nothing but shipping merges.
   const merged = [...made.project.mrs.values()].filter((mr) => mr.state === "merged").map((mr) => mr.iid);
   const open = [...made.project.mrs.values()].filter((mr) => mr.state === "opened").map((mr) => mr.iid);
   expect(merged).toHaveLength(3);
-  expect(open).toHaveLength(7);
+  expect(open).toHaveLength(8);
   expect(made.project.mrs.get(4)?.description).toStartWith("## Why");
 
   // Promoted: a merge on the forge starts the cleanup.

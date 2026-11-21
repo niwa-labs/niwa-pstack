@@ -7,7 +7,7 @@ import type { ScriptApi } from "@niwa-labs/script";
 import { isRefusal, registered, tryVersion } from "./lib/catalog.ts";
 import { repoSchema } from "./lib/inputs.ts";
 import { api } from "./lib/script.ts";
-import { SCENARIOS } from "./scenarios.ts";
+import { OPTIONAL, SCENARIOS } from "./scenarios.ts";
 import type { Context, Ended, Fixture } from "./scenarios.ts";
 
 declare const workflow: ScriptApi["workflow"];
@@ -89,6 +89,7 @@ export default workflow(
     for (const [index, scenario] of SCENARIOS.entries()) {
       const found = all[scenario.builtin];
       const version = pins[scenario.builtin];
+      if (found === undefined && OPTIONAL.has(scenario.builtin)) continue;
       if (found === undefined || version === undefined) {
         rows.push({ builtin: scenario.builtin, scenario: scenario.name, passed: false, why: "the built-in is not registered" });
         continue;

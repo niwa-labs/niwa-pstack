@@ -57,8 +57,17 @@ export const PLAYBOOKS: readonly Builtin[] = [
   { name: "worktree-cleanup", description: "Remove the worktrees a merged pull request was built in", triggers: ["forge.pr.merged"] },
 ];
 
+/** Benny's two automations, offered when Benny is enabled: triage every report, reproduce and fix a confirmed bug. */
+export const BENNY: readonly Builtin[] = [
+  { name: "benny-triage", description: "Triage an issue report handed to Benny", triggers: ["benny.reported"] },
+  { name: "benny-reproduce", description: "Reproduce a confirmed bug and fix it in a draft request" },
+];
+
 /** The built-ins that come in as candidates: the entry and the playbooks. */
 export const GATED: readonly Builtin[] = [{ name: ENTRY, description: "Pick the playbook a request needs and run it" }, ...PLAYBOOKS];
 
 /** The suite: it is what promotes, so it is not gated. */
 export const SUITE_BUILTIN: Builtin = { name: SUITE, description: "Run the scenarios on candidate playbooks and promote them" };
+
+/** The gated built-ins a pstack plugin offers: Benny's too when he is enabled. */
+export const gatedOf = (benny: boolean): readonly Builtin[] => (benny ? [...GATED, ...BENNY] : GATED);

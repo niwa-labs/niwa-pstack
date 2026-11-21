@@ -27,6 +27,9 @@ export type Context = Record<string, unknown>;
 /** How a run of a built-in ended. */
 export type Ended = { ok: true; value: unknown } | { ok: false; error: { name: string; message: string } };
 
+/** Built-ins a pstack plugin offers only when it is asked to: their scenarios are skipped when they are not registered. */
+export const OPTIONAL = new Set(["benny-triage", "benny-reproduce"]);
+
 /** A scenario: the built-in it runs, its name, the input it gives, and why its outcome fails, or null when it passes. */
 export interface Scenario {
   builtin: string;
@@ -238,7 +241,32 @@ export const SCENARIOS: readonly Scenario[] = [
     },
     check: answered("judged", (value) => (Object.keys(value["table"] ?? {}).length === 2 ? null : "not every variant was graded")),
   },
+  {
+    builtin: "benny-triage",
+    name: "triages a bug report as a bug",
+    args: (f) => ({ id: "suite", type: "benny.reported", data: { report: REPORT, repo: f.repo, worktrees: f.worktrees, base: f.base } }),
+    check: (ended, context) => {
+      const got = valueOf(ended);
+      if ("failed" in got) return got.failed;
+      if (got.value["verdict"] !== "bug") return `the report was triaged as ${JSON.stringify(got.value["verdict"])}`;
+      context["triaged"] = got.value;
+      return null;
+    },
+  },
+  {
+    builtin: "benny-reproduce",
+    name: "reproduces a triaged bug and fixes it in a draft",
+    args: (f, context) => {
+      const triaged = context["triaged"] as Record<string, unknown> | undefined;
+      if (triaged === undefined) throw new Error("no report was triaged by an earlier scenario");
+      return { id: "suite", type: "wf.pstack-benny-triage.triaged", data: { report: REPORT, ...triaged, repo: f.repo, worktrees: f.worktrees, base: f.base } };
+    },
+    check: answered("verified"),
+  },
 ];
+
+/** What Benny is handed in the scenarios: a report of a bug in the fixture. */
+const REPORT = "The README calls the service payroll; it is the billing service.";
 
 /** The top of the stack an earlier scenario verified. */
 function top(context: Context): { pr: number; branch: string; worktree: string } {
