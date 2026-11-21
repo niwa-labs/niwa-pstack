@@ -12,6 +12,7 @@ import { authorLaunch, worktreesOf } from "./author.ts";
 import { UNGATED, gatedOf, scriptOf } from "./catalog.ts";
 import { BennyReported, bennyReport, pstackAuthorStart, pstackRoles } from "./records.ts";
 import { Roles } from "./roles.ts";
+import { upstreamActions } from "./upstream-actions.ts";
 import type { RolesInput } from "./roles.ts";
 
 /** What the pstack plugin is given. */
@@ -51,6 +52,7 @@ export function pstackPlugin(options: PstackOptions): Plugin {
       api.offer(BUILTIN_WORKFLOW, { name: one.name, file: scriptOf(one.name), description: one.description, gated: true, ...(one.triggers === undefined ? {} : { triggers: one.triggers }) });
     }
     for (const one of UNGATED) api.offer(BUILTIN_WORKFLOW, { name: one.name, file: scriptOf(one.name), description: one.description });
+    for (const one of upstreamActions(() => api.home())) api.action(one);
     api.action(action(pstackRoles, { recovery: "repeat", effect: "read", world: "niwa", run: () => roles }));
     const benny = options.benny;
     if (benny !== undefined) {

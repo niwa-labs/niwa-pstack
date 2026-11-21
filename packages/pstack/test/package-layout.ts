@@ -42,16 +42,27 @@ export function entriesFor(upstreamCommit: string, oursCommit: string, texts: Re
   });
 }
 
+/** Put a package folder into the repository `root`: the snapshot of `checkout` at `commit` and a map that covers it, committed. */
+export function seedPackage(root: string, checkout: string, commit: string, kinds: { worker?: Entry["kind"]; bugFix?: Entry["kind"] } = {}): { packageDir: string; oursCommit: string; entries: Entry[] } {
+  const oursCommit = git(root, "rev-parse", "HEAD");
+  const packageDir = join(root, "packages", "pstack");
+  mkdirSync(packageDir, { recursive: true });
+  refreshUpstream(checkout, { upstream: join(packageDir, "upstream"), commit });
+  const entries = entriesFor(commit, oursCommit).map((one) => {
+    const kind = one.upstream.file.endsWith("worker.md") ? kinds.worker : one.upstream.file.endsWith("bug-fix.md") ? kinds.bugFix : undefined;
+    return kind === undefined ? one : { ...one, kind };
+  });
+  writeFileSync(join(packageDir, "upstream", "mapping.json"), formatMapping({ entries }));
+  git(root, "add", "-A");
+  git(root, "commit", "-q", "-m", "snapshot and map");
+  return { packageDir, oursCommit, entries };
+}
+
 /** A repository whose package folder holds the snapshot of `checkout` at `commit` and a map that covers it. */
 export async function packageRepo(checkout: string, commit: string): Promise<{ root: string; packageDir: string; oursCommit: string }> {
   const root = await tempDir("repo");
   git(root, "init", "-q", "-b", "main");
-  const oursCommit = commitFiles(root, { "README.md": "The billing service.\n" }, "start");
-  const packageDir = join(root, "packages", "pstack");
-  mkdirSync(packageDir, { recursive: true });
-  refreshUpstream(checkout, { upstream: join(packageDir, "upstream"), commit });
-  writeFileSync(join(packageDir, "upstream", "mapping.json"), formatMapping({ entries: entriesFor(commit, oursCommit) }));
-  git(root, "add", "-A");
-  git(root, "commit", "-q", "-m", "snapshot and map");
-  return { root, packageDir, oursCommit };
+  commitFiles(root, { "README.md": "The billing service.\n" }, "start");
+  const seeded = seedPackage(root, checkout, commit);
+  return { root, packageDir: seeded.packageDir, oursCommit: seeded.oursCommit };
 }
