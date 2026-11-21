@@ -22,7 +22,11 @@ export default [
       verifier: { harness: "pi", vendor: "minimax" },
       judge: { harness: "pi", vendor: "glm" },
     },
-    benny: { repo: { host: "gitlab.example.com", path: "acme/billing", local: "/work/billing" } },
+    benny: {
+      repo: { host: "gitlab.example.com", path: "acme/billing", local: "/work/billing" },
+      // Your plugins that provide his three ports; see "Benny needs your plugins".
+      ports: [acmeTracker(), acmeChat(), acmeControl()],
+    },
   }),
   workflow(),
 ];
@@ -30,7 +34,8 @@ export default [
 
 `pstack()` installs forge, evidence, watch and plan, then the pstack plugin. The host provides the sessions and git
 modules before it and the workflow module after it. `bind` is the binding of the host's sessions and agents modules
-(`addressingOf`), so a session attests under one address for its whole life and an agent's session as the agent.
+(`addressingOf`), so a session attests under one address for its whole life and an agent's session as the agent. Without
+`benny`, none of the ports below is needed.
 
 ## Roles
 
@@ -109,8 +114,62 @@ suite gives the go itself, as a run may.
 ## Benny
 
 With `benny`, the plugin offers the agent `benny` to the agents module, an action `benny.report`, and two gated
-automations. Every report is triaged as data. A report triaged as a bug is reproduced twice before any code is touched,
-and then fixed in a draft pull request. Benny never merges or deploys.
+automations. Every report is triaged as data: the triage session searches the issue tracker for it and files an issue
+for a clear, new bug, and the workflow posts its verdict once, in the thread the report came in on. A report triaged as
+a bug is reproduced twice through the product control before any code is touched, and then fixed in a draft pull
+request, which is linked to its issue; the owner is told once how it ended. Benny never merges or deploys.
+
+`benny.report` is for the report channel's plugin: it hands a report in with `source`, the channel's own address of the
+report, which comes back to `benny.channel.reply` with the verdict. A report with no `source` is triaged and
+reproduced all the same, and nothing is posted.
+
+## Benny needs your plugins
+
+Benny's tracker, chat and product are yours, not pstack's, so pstack ships three typed contracts and no
+implementation of them. Each is a port: a plugin of yours offers it and registers the actions of its contract.
+
+| Port | Offered at | Actions it provides |
+|---|---|---|
+| issue tracker | `BENNY_TRACKER` | `benny.tracker.find` (search by text, state and source), `benny.tracker.create` (title, body, source, labels), `benny.tracker.comment` (a recurrence note and a source on an existing issue), `benny.tracker.link-pr` (a pull request, by subject or url, on an issue) |
+| report channel | `BENNY_CHANNEL` | `benny.channel.reply` (one reply in the thread of a report, by its `source`), `benny.channel.notify` (a status for the owner) |
+| product control | `BENNY_CONTROL` | `benny.control.capabilities`, `bring-up`, `drive`, `inspect`, `screenshot`, `record`, `cleanup`: what upstream's control-adapter contract asks of the app it drives |
+
+The channel also takes reports in: when one arrives, its plugin calls `benny.report` with the text, who wrote it and
+its `source`. The control has no default for any project; the others have none either.
+
+- The types are the action references `bennyTrackerFind`, `bennyChannelReply`, `bennyControlDrive` and the rest,
+  exported from `@niwa-labs/pstack` with their zod schemas. `action(ref, { ... })` builds the action from a
+  reference, so a provider and pstack check against one schema. The description of each reference says what the
+  action must and must not do: `inspect` is read-only, `drive` is a real user action and never an injected state,
+  `reply` posts in the report's thread and nowhere else, `create` makes an issue that links back to its source.
+- A provider offers its port in its setup, with `api.offer(BENNY_TRACKER, { description })`. pstack reads the offers
+  when it is installed, so the providers are installed before it: list them in `benny.ports` and `pstack()` does so, or
+  install them yourself ahead of `...pstack()`. A host that lacks a port does not start: the error names each missing
+  port and says to install its provider before pstack.
+- The triage session is shown `find`, `create` and `comment`; the reproduction session is shown the control actions.
+  The channel is never shown to a session: the workflow is the only poster.
+
+A minimal tracker provider:
+
+```ts
+import { action } from "@niwa-labs/core";
+import { plugin } from "@niwa-labs/plugin";
+import { BENNY_TRACKER, bennyTrackerComment, bennyTrackerCreate, bennyTrackerFind, bennyTrackerLinkPr } from "@niwa-labs/pstack";
+
+// `acme` is your tracker's own client; the plugin only maps it onto the contract.
+export function acmeTracker() {
+  return plugin("acme-tracker", (api) => {
+    api.offer(BENNY_TRACKER, { description: "Acme's issue tracker" });
+    api.action(action(bennyTrackerFind, { recovery: "repeat", effect: "read", world: "external", run: async (input) => ({ items: await acme.search(input.text, input.state, input.source) }) }));
+    api.action(action(bennyTrackerCreate, { recovery: "do-not-repeat", effect: "write", world: "external", run: async (input) => await acme.create(input) }));
+    api.action(action(bennyTrackerComment, { recovery: "do-not-repeat", effect: "write", world: "external", run: async (input) => (await acme.comment(input), { ok: true as const }) }));
+    api.action(action(bennyTrackerLinkPr, { recovery: "do-not-repeat", effect: "write", world: "external", run: async (input) => (await acme.linkPr(input), { ok: true as const }) }));
+  });
+}
+```
+
+The chat and the control are written the same way, with their own references. The tests of this package install
+in-memory providers of the three ports (`test/ports.ts`) so the suite can run Benny; they are a stand-in, not a default.
 
 ## The upstream snapshot and its map
 
