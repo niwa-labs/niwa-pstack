@@ -40,17 +40,22 @@ export function formatReport(report: Report, opts: { limit?: number } = {}): str
   return `${out.join("\n")}\n`;
 }
 
-/** The numbers of a report, for a caller that reads them: coverage, and what is not settled. */
-export function summaryOf(report: Report): { problems: number; coverage: number; files: Array<{ file: string; percent: number }>; entries: number; unchanged: number; touched: number; gone: number; uncovered: number } {
+/** The numbers of a report, for a caller that reads them: coverage, and what is not settled. One short line: the per-file coverage is in the report. */
+export function summaryOf(report: Report): { problems: number; coverage: number; entries: number; unchanged: number; touched: number; gone: number; uncovered: number } {
   const count = (status: string): number => report.entries.filter((one) => one.status === status).length;
   return {
     problems: report.problems.length,
     coverage: report.coverage.percent,
-    files: report.coverage.files.map((one) => ({ file: one.file, percent: one.percent })),
     entries: report.entries.length,
     unchanged: count("unchanged"),
     touched: count("touched"),
     gone: count("gone"),
     uncovered: report.coverage.files.reduce((sum, one) => sum + one.uncovered.length, 0),
   };
+}
+
+/** The numbers for a map that could not be read at all: one problem, and the reason. */
+export function unreadable(error: unknown): { problems: number; coverage: number; entries: number; unchanged: number; touched: number; gone: number; uncovered: number; error: string } {
+  const message = error instanceof Error ? error.message : String(error);
+  return { problems: 1, coverage: 0, entries: 0, unchanged: 0, touched: 0, gone: 0, uncovered: 0, error: message.slice(0, 500) };
 }

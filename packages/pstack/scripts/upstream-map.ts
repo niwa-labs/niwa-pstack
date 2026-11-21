@@ -1,9 +1,10 @@
 // Measure the mapping of the upstream snapshot: `bun packages/pstack/scripts/upstream-map.ts <command>`.
 //
-//   check    [--upstream <checkout>] [--head <rev> | --worktree] [--out <file>] [--summary]
+//   check    [--upstream <checkout>] [--head <rev> | --worktree] [--map <file>] [--out <file>] [--summary]
 //            validate the mapping, report coverage of the upstream text, and what became of each entry's ranges since
 //            the commits they were recorded at. Draws no conclusion. `--out` writes the whole report as JSON;
-//            `--summary` prints one line of JSON numbers instead of the text.
+//            `--summary` prints one line of JSON numbers instead of the text. A map that cannot be read at all is one
+//            problem, said in the same form; the exit is 1 whenever the map has a problem.
 //   advance  [--upstream <checkout>] [--head <rev>]   record the unchanged entries at the current commits
 //   accept   <id>... [--upstream <checkout>] [--head <rev>]   record the named entries at the carried positions
 //   assemble [--check]   write the texts the scripts import from the mapping; with `--check`, only compare them
@@ -14,7 +15,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-import { Git, OursTexts, UpstreamTexts, WORKTREE, accept, advance, analyze, assemble, formatMapping, formatReport, jsonOf, parseMapping, summaryOf, writeTexts } from "../src/mapping/index.ts";
+import { Git, OursTexts, UpstreamTexts, WORKTREE, accept, advance, analyze, assemble, formatMapping, formatReport, jsonOf, parseMapping, summaryOf, unreadable, writeTexts } from "../src/mapping/index.ts";
 import { MAPPING_FILE, PACKAGE_DIR, TEXTS_DIR, UPSTREAM_DIR, refreshUpstream } from "../src/upstream.ts";
 
 const [command, ...rest] = process.argv.slice(2);
@@ -37,7 +38,7 @@ const usage = (): never => {
   process.exit(2);
 };
 
-const { flags, words } = parse(rest, ["--upstream", "--head", "--out"]);
+const { flags, words } = parse(rest, ["--upstream", "--head", "--out", "--map"]);
 const text = (flag: string): string | undefined => {
   const value = flags.get(flag);
   return typeof value === "string" ? value : undefined;
@@ -47,13 +48,24 @@ const open = () => {
   const upstreamCheckout = text("--upstream");
   const upstream = new UpstreamTexts(UPSTREAM_DIR, upstreamCheckout === undefined ? undefined : resolve(upstreamCheckout));
   const ours = new OursTexts(repoRoot, flags.has("--worktree") ? WORKTREE : (text("--head") ?? "HEAD"));
-  const mapping = parseMapping(readFileSync(MAPPING_FILE, "utf8"));
+  const mapping = parseMapping(readFileSync(text("--map") ?? MAPPING_FILE, "utf8"));
   return { upstream, ours, mapping, report: analyze(mapping, upstream, ours) };
 };
 
 if (command === "check") {
-  const { report } = open();
   const out = text("--out");
+  let opened: ReturnType<typeof open>;
+  try {
+    opened = open();
+  } catch (error) {
+    // A map that cannot be read at all (bad JSON, a schema error, a commit that is not there) is a problem of the
+    // map, said as one: whoever reads the numbers gets a line to act on, not a crash.
+    const said = unreadable(error);
+    if (out !== undefined) writeFileSync(resolve(out), `${JSON.stringify({ error: said.error }, null, 2)}\n`);
+    console.log(flags.has("--summary") ? JSON.stringify(said) : `PROBLEMS 1\n  the map could not be read: ${said.error}`);
+    process.exit(1);
+  }
+  const { report } = opened;
   if (out !== undefined) writeFileSync(resolve(out), `${JSON.stringify(report, null, 2)}\n`);
   console.log(flags.has("--summary") ? JSON.stringify(summaryOf(report)) : formatReport(report));
   process.exit(report.problems.length === 0 ? 0 : 1);

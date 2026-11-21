@@ -2,7 +2,8 @@
 // scripts import are assembled from it, whole and with nothing a session cannot reach.
 
 import { expect, test } from "bun:test";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { OursTexts, UpstreamTexts, analyze, assemble, jsonOf, parseMapping } from "../src/mapping/index.ts";
@@ -103,4 +104,29 @@ test("the map tool prints the numbers of the snapshot it is run on", () => {
   expect(summary.problems).toBe(0);
   expect(summary.coverage).toBeGreaterThanOrEqual(95);
   expect(summary.entries).toBe(mapping.entries.length);
+});
+
+test("the map tool says a map it cannot read is a problem, in the form it says the others, and does not crash", () => {
+  const file = join(tmpdir(), `broken-map-${String(process.pid)}.json`);
+  writeFileSync(file, '{"entries": [{"id": "x"}');
+  const ran = Bun.spawnSync(["bun", join(PACKAGE_DIR, "scripts", "upstream-map.ts"), "check", "--summary", "--map", file], { stdout: "pipe", stderr: "pipe" });
+  rmSync(file);
+  expect(ran.exitCode).toBe(1);
+  const summary = JSON.parse(ran.stdout.toString().trim().split("\n").at(-1) as string) as { problems: number; error: string };
+  expect(summary.problems).toBe(1);
+  expect(summary.error.length).toBeGreaterThan(0);
+});
+
+test("the summary the sync reads is one short line of numbers", () => {
+  const ran = Bun.spawnSync(["bun", join(PACKAGE_DIR, "scripts", "upstream-map.ts"), "check", "--summary"], { stdout: "pipe", stderr: "pipe" });
+  const line = ran.stdout.toString().trim();
+  expect(line.split("\n")).toHaveLength(1);
+  expect(line.length).toBeLessThan(300);
+});
+
+test("every commit of ours the map records is in the history of HEAD", () => {
+  const git = new Git(root);
+  for (const commit of new Set(mapping.entries.flatMap((one) => one.ours.map((link) => link.commit)))) {
+    expect({ commit, ancestor: git.run(["merge-base", "--is-ancestor", commit, "HEAD"]).exit }).toEqual({ commit, ancestor: 0 });
+  }
 });

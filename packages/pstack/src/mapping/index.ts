@@ -6,7 +6,7 @@ export { assemble, jsonOf, textSpecs, titleOf, writeTexts } from "./assemble.ts"
 export type { AssembledText } from "./assemble.ts";
 export { carry, diffText } from "./diff.ts";
 export type { Carried, Segment, Span } from "./diff.ts";
-export { formatReport, summaryOf } from "./format.ts";
+export { formatReport, summaryOf, unreadable } from "./format.ts";
 export { Git } from "./git.ts";
 export { accept, advance } from "./maintain.ts";
 export { Entry, KINDS, Mapping, formatMapping, parseMapping } from "./schema.ts";
