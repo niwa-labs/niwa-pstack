@@ -104,8 +104,8 @@ export default workflow(
     };
     const measure = async (key: string): Promise<Summary> => summaryOf(await run(key, wt.path, [...tool, "check", "--summary", "--out", report, "--upstream", upstream.checkout]));
     const record = async (key: string, message: string): Promise<void> => {
-      const ran = await run(`${key}-advance`, wt.path, [...tool, "advance", "--upstream", upstream.checkout]);
-      if (ran.exit !== 0) throw new Error(`the map tool failed to advance: ${ran.out.trim().slice(-500)}`);
+      // A map with problems is not recorded: the next measurement says so and the author mends it. Nothing here throws.
+      await run(`${key}-advance`, wt.path, [...tool, "advance", "--upstream", upstream.checkout]);
       await commit(key, message, ["packages/pstack/upstream"]);
     };
 

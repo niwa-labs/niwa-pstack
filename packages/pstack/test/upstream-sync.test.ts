@@ -28,8 +28,9 @@ case "$cmd" in
   check)
     echo '{}' > .upstream-map-report.json
     touched=$(cat $dir/touched)
+    [ -f $dir/broken ] && { echo '{"problems":1,"coverage":0,"entries":0,"unchanged":0,"touched":0,"gone":0,"uncovered":0}'; exit 1; }
     printf '{"problems":0,"coverage":%s,"entries":10,"unchanged":%s,"touched":%s,"gone":0,"uncovered":0}\\n' "$(cat $dir/coverage)" "$((10 - touched))" "$touched" ;;
-  advance) echo advance >> $dir/log ;;
+  advance) [ -f $dir/broken ] && exit 1; echo advance >> $dir/log ;;
   assemble) mkdir -p packages/pstack/src/workflows/texts; echo '{"name":"bug-fix"}' > packages/pstack/src/workflows/texts/bug-fix.json ;;
   *) echo "unknown command $cmd"; exit 2 ;;
 esac
@@ -170,4 +171,20 @@ test("what would change a workflow is asked of the owner once, and its answer is
   expect(rounds).toHaveLength(2);
   expect(rounds[1]?.prompt).toContain("- Deliver the autonomy rules to every session?: Yes, deliver them.");
   expect(gitIn(result.worktree, "ls-files", "owner.md")).toBe("owner.md");
+}, 120_000);
+
+test("a map the author left broken is not a failed run: it is measured as a problem, and the next round mends it", async () => {
+  const made = await synced(0, 96);
+  commitFile(made.repo, "packages/pstack/upstream/broken", "yes\n");
+  made.harnesses.answers["upstream-sync:round"] = (call) => {
+    const cwd = call.cwd as string;
+    gitIn(cwd, "rm", "-q", "packages/pstack/upstream/broken");
+    gitIn(cwd, "commit", "-q", "-m", "mend the map");
+    return said(gitIn(cwd, "rev-parse", "HEAD"));
+  };
+  const result = await sync(made);
+
+  expect(result.status).toBe("synced");
+  expect(result.rounds).toHaveLength(1);
+  expect(made.harnesses.of("upstream-sync:round")[0]?.prompt).toContain('"problems":1');
 }, 120_000);
