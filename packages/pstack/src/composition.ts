@@ -7,8 +7,10 @@
  * workflow module after it, and the binding by which a session attests under one address for its whole life.
  *
  * ```ts
- * const base = defaultComposition({ home, harnesses, kinds, agents });
- * export default [...base, ...pstack({ bind: addressingOf(base), forge: { servers }, roles }), workflow()];
+ * const base = defaultComposition({ home, harnesses, agents });
+ * const beforeWorkflow = base.filter((part) => part.name !== "workflow");
+ * const workflow = base.filter((part) => part.name === "workflow");
+ * export default [...beforeWorkflow, ...pstack({ bind: addressingOf(base), forge: { servers }, roles }), ...workflow];
  * ```
  */
 
@@ -27,7 +29,7 @@ import type { PstackOptions } from "./plugin.ts";
 export interface PstackCompositionOptions extends Omit<PstackOptions, "forges"> {
   /** The binding evidence attests with: `addressingOf(plugins)` of the host's sessions and agents modules. */
   readonly bind: CallerBinding;
-  /** The forges: their hosts are the only network an author's box reaches. */
+  /** The forges whose hosts an author's box can add when the caller's grant allows them. */
   readonly forge: ForgeOptions;
   readonly watch?: WatchOptions;
 }
