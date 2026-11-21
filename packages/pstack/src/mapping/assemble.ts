@@ -40,7 +40,7 @@ const SKILLS = "benny/skills";
 export function textSpecs(snapshot: string): TextSpec[] {
   return [
     ...playbookNames(snapshot).map((name) => ({ name, files: [`poteto-mode/playbooks/${name}.md`] })),
-    { name: "worker", title: "Worker rules", files: ["poteto-mode/worker.md"] },
+    { name: "worker", title: "Worker rules", files: ["poteto-mode/worker.md", "poteto-mode/SKILL.md"] },
     { name: "bugbot-triage", files: ["poteto-mode/references/bugbot-triage.md"] },
     { name: "benny-triage", files: [`${SKILLS}/triage-issue-reports/SKILL.md`] },
     {

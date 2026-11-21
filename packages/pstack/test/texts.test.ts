@@ -103,12 +103,39 @@ test("the playbooks that no session is given as text are code of ours, or droppe
   }
 });
 
-test("each block of SKILL.md is linked to the code that implements it or dropped with its reason", () => {
+test("each block of SKILL.md is dropped with its reason, or adapted into the worker rules", () => {
   const blocks = mapping.entries.filter((one) => one.upstream.file === "poteto-mode/SKILL.md");
   expect(blocks.length).toBeGreaterThan(20);
   for (const one of blocks) {
-    expect(one.kind === "code" || one.kind === "dropped").toBe(true);
+    expect(one.kind === "dropped" || one.kind === "adapted").toBe(true);
     if (one.kind === "dropped") expect(one.note?.length).toBeGreaterThan(10);
+  }
+});
+
+test("every session is given the three rules of the operator's skill that no other text carries", () => {
+  const worker = texts.find((one) => one.file === "worker.json")?.value.text ?? "";
+  expect(worker).toContain("restating the goal and the smallest change that meets it");
+  expect(worker).toContain("**No is an acceptable answer.**");
+  expect(worker).toContain("Write the reply in short declarative sentences");
+  const delivered = mapping.entries.filter((one) => one.upstream.file === "poteto-mode/SKILL.md" && one.kind === "adapted").map((one) => one.id);
+  expect(delivered).toEqual(["skill:05", "skill:20", "skill:24"]);
+});
+
+test("Benny's draft pull request is an explicit, recorded exception to the worker rule that every pull request is ready", () => {
+  const worker = texts.find((one) => one.file === "worker.json")?.value.text ?? "";
+  expect(worker).toContain("Open every PR ready for review, never as a draft.");
+  const reproduce = texts.find((one) => one.file === "benny-reproduce.json")?.value.text ?? "";
+  expect(reproduce).toContain('This is the one exception to the worker rule "Open every PR ready for review, never as a draft"');
+  expect(mapping.entries.some((one) => one.kind === "adapted" && one.id.startsWith("benny-reproduce") && /exception to the worker rule/.test(one.note ?? ""))).toBe(true);
+});
+
+test("no playbook text sends a session to a Cursor skill, a model slug, /loop, gh, origin or agent-transcripts", () => {
+  const cursor = /\*\*[A-Za-z-]+\*\* (?:principle )?skill|principle-[a-z]|Subagents section|claude-[a-z]+-\d|\/loop|\bgh (?:api|pr)\b|`gh`|origin pr|agent-transcripts|cursor-team-kit|control-ui|control-cli|`(?:architect|unslop|tdd|why|interrogate|deslop)`|\*\*(?:architect|unslop|tdd|why|swarm|arena|interrogate|ketchup)\*\*/;
+  for (const { file, value } of texts) {
+    const found = cursor.exec(value.text)?.[0];
+    // babysit and autopilot-full name gh and origin to forbid them.
+    if (found === "`gh`" && (file === "babysit.json" || file === "autopilot-full.json")) continue;
+    expect({ file, found }).toEqual({ file, found: undefined });
   }
 });
 

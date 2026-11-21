@@ -15,6 +15,8 @@ const BUG_FIX = "poteto-mode/playbooks/bug-fix.md";
 const BUG_TEXT = UPSTREAM_FILES["skills/poteto-mode/playbooks/bug-fix.md"] as string;
 const WORKER = "poteto-mode/worker.md";
 const WORKER_TEXT = UPSTREAM_FILES["skills/poteto-mode/worker.md"] as string;
+const SKILL = "poteto-mode/SKILL.md";
+const SKILL_TEXT = UPSTREAM_FILES["skills/poteto-mode/SKILL.md"] as string;
 const BRIEF = OURS_FILES["src/brief.ts"] as string;
 const OWN = OURS_FILES["src/adapted.md"] as string;
 
@@ -27,6 +29,8 @@ function mapOf(w: World, kinds: { head?: Entry["kind"]; fix?: Entry["kind"]; wor
     make("head", BUG_FIX, BUG_TEXT, "### Bug fix\n\nReproduce it.\n\n", kinds.head ?? "prompt"),
     make("fix", BUG_FIX, BUG_TEXT, "Fix the cause.\n", kinds.fix ?? "prompt"),
     make("worker", WORKER, WORKER_TEXT, "Work for the operator.\n", kinds.worker ?? "prompt"),
+    // The operator's skill goes into the worker text too: here none of it does.
+    make("skill", SKILL, SKILL_TEXT, SKILL_TEXT, "dropped"),
   );
 }
 
