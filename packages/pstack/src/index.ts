@@ -3,11 +3,21 @@
  * the suite tries every new version of them on scenarios before the host runs it.
  */
 
-export { ENTRY, GATED, PLAYBOOKS, SUITE, SUITE_BUILTIN, scriptOf } from "./catalog.ts";
+export { PSTACK_NEEDS, pstack } from "./composition.ts";
+export type { PstackCompositionOptions } from "./composition.ts";
+export { addressingOf } from "./binding.ts";
+export type { Binding } from "./binding.ts";
+export { AuthorRefusal, authorLaunch } from "./author.ts";
+export type { AuthorRefusalCode } from "./author.ts";
+export { BENNY, ENTRY, GATED, PLAYBOOKS, SUITE, SUITE_BUILTIN, gatedOf, scriptOf } from "./catalog.ts";
 export type { Builtin } from "./catalog.ts";
 export { pstackPlugin } from "./plugin.ts";
-export type { PstackOptions } from "./plugin.ts";
-export { pstackRoles } from "./records.ts";
+export type { BennyOptions, PstackOptions } from "./plugin.ts";
+export { BennyReported, SessionAddress, bennyReport, pstackAuthorStart, pstackRoles } from "./records.ts";
+export { GO, VERDICTS, decide, goCovers, goDigest, goSubject, mayGiveGo, mergeRequirements } from "./policy.ts";
+export type { Found, MergeSubject, PlanRevision, Required } from "./policy.ts";
+export { isLockfile, isManifest, trunkKind } from "./trunk.ts";
+export type { TrunkFacts, TrunkKind } from "./trunk.ts";
 export { AuthorRole, Roles, SeatRole } from "./roles.ts";
 export type { RolesInput } from "./roles.ts";
 export { refreshUpstream, playbookNames, textsOf } from "./upstream.ts";
