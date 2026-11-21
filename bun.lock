@@ -15,34 +15,60 @@
       "dependencies": {
         "@niwa-labs/core": "*",
         "@niwa-labs/evidence": "*",
+        "@niwa-labs/flow": "*",
         "@niwa-labs/flow-code": "*",
+        "@niwa-labs/flow-eval": "*",
         "@niwa-labs/forge": "*",
         "@niwa-labs/plan": "*",
         "@niwa-labs/plugin": "*",
         "@niwa-labs/script": "*",
         "@niwa-labs/watch": "*",
+        "zod": "^4.6.7",
+      },
+      "devDependencies": {
+        "@niwa-labs/testing": "*",
       },
     },
   },
   "overrides": {
+    "@niwa-labs/client": "link:../niwa/packages/client",
+    "@niwa-labs/cockpit-sdk": "link:../niwa/packages/cockpit-sdk",
     "@niwa-labs/core": "link:../niwa/packages/core",
+    "@niwa-labs/digest": "link:../niwa/packages/digest",
     "@niwa-labs/evidence": "link:../plugins/packages/evidence",
     "@niwa-labs/flow": "link:../niwa/packages/flow",
     "@niwa-labs/flow-code": "link:../niwa/packages/flow-code",
+    "@niwa-labs/flow-eval": "link:../niwa/packages/flow-eval",
     "@niwa-labs/forge": "link:../plugins/packages/forge",
     "@niwa-labs/git": "link:../niwa/packages/git",
+    "@niwa-labs/harness": "link:../niwa/packages/harness",
+    "@niwa-labs/history": "link:../niwa/packages/history",
+    "@niwa-labs/host": "link:../niwa/packages/host",
+    "@niwa-labs/messages": "link:../niwa/packages/messages",
     "@niwa-labs/plan": "link:../plugins/packages/plan",
     "@niwa-labs/plugin": "link:../niwa/packages/plugin",
     "@niwa-labs/proc": "link:../niwa/packages/proc",
+    "@niwa-labs/requests": "link:../niwa/packages/requests",
+    "@niwa-labs/sandbox": "link:../niwa/packages/sandbox",
     "@niwa-labs/script": "link:../niwa/packages/script",
+    "@niwa-labs/sessions": "link:../niwa/packages/sessions",
+    "@niwa-labs/tasks": "link:../niwa/packages/tasks",
+    "@niwa-labs/testing": "link:../niwa/packages/testing",
+    "@niwa-labs/timer": "link:../niwa/packages/timer",
+    "@niwa-labs/ui-kit": "link:../niwa/packages/ui-kit",
     "@niwa-labs/watch": "link:../plugins/packages/watch",
+    "@niwa-labs/workflow": "link:../niwa/packages/workflow",
   },
   "packages": {
     "@niwa-labs/core": ["@niwa-labs/core@link:../niwa/packages/core", {}],
 
     "@niwa-labs/evidence": ["@niwa-labs/evidence@link:../plugins/packages/evidence", {}],
 
+    "@niwa-labs/flow": ["@niwa-labs/flow@link:../niwa/packages/flow", {}],
+
     "@niwa-labs/flow-code": ["@niwa-labs/flow-code@link:../niwa/packages/flow-code", {}],
+
+    "@niwa-labs/flow-eval": ["@niwa-labs/flow-eval@link:../niwa/packages/flow-eval", {}],
 
     "@niwa-labs/forge": ["@niwa-labs/forge@link:../plugins/packages/forge", {}],
 
@@ -53,6 +79,8 @@
     "@niwa-labs/pstack": ["@niwa-labs/pstack@workspace:packages/pstack"],
 
     "@niwa-labs/script": ["@niwa-labs/script@link:../niwa/packages/script", {}],
+
+    "@niwa-labs/testing": ["@niwa-labs/testing@link:../niwa/packages/testing", {}],
 
     "@niwa-labs/watch": ["@niwa-labs/watch@link:../plugins/packages/watch", {}],
 
@@ -65,5 +93,7 @@
     "typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
     "undici-types": ["undici-types@8.9.0", "", {}, "sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg=="],
+
+    "zod": ["zod@4.6.7", "", {}, "sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg=="],
   }
 }
