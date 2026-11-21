@@ -245,6 +245,8 @@ export interface PstackHostOptions {
   readonly bind?: CallerBinding;
   /** Benny: on unless `false`. */
   readonly benny?: false;
+  /** The role seats, when a test needs specific harnesses or vendors. */
+  readonly roles?: RolesInput;
   /** The providers of Benny's ports that are left out, as a host that lacks them would be. */
   readonly withoutPorts?: ReadonlyArray<"tracker" | "channel" | "control">;
   /** How the pipelines a new pull request gets end: its head's and its merge result's. Default: both succeed. */
@@ -297,7 +299,7 @@ export async function pstackHost(options: PstackHostOptions = {}): Promise<Pstac
     plan(),
     ...(options.plugins ?? []),
     ...(options.benny === false ? [] : ports.plugins),
-    pstackPlugin({ roles: ROLES, forges: [FORGE_HOST], ...(options.benny === false ? {} : { benny: { repo: { host: FORGE_HOST, path: PROJECT, local: repo } } }) }),
+    pstackPlugin({ roles: options.roles ?? ROLES, forges: [FORGE_HOST], ...(options.benny === false ? {} : { benny: { repo: { host: FORGE_HOST, path: PROJECT, local: repo } } }) }),
     // The agents module reads the agents a plugin offers; this one only keeps them.
     plugin("agents", (api) => {
       offeredAgents.push(...api.offers(AGENT).map((one) => one.value));
@@ -426,7 +428,7 @@ export function defaultAnswers(made: PstackHost): Answers {
     "": (call) => {
       if (!call.prompt.startsWith("Grade the subject")) return { answer: "It is the billing service." };
       const ids = [...call.prompt.matchAll(/^- ([a-z][a-z0-9-]*): /gm)].map((found) => found[1] as string);
-      return { scores: Object.fromEntries(ids.map((id) => [id, 1])) };
+      return { scores: ids.map((id) => ({ id, score: 1 })) };
     },
     "opening-a-pr:write": () => ({ title: "docs(readme): add the page", sections: [{ heading: "Why", body: "The page needs it." }, { heading: "Verification", body: "Read it." }] }),
     "pause-safely:checkpoint": (call) => {

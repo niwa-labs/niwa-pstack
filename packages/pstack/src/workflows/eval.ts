@@ -32,7 +32,7 @@ export default workflow(
       status: z.literal("judged"),
       success: z.string(),
       rubric: z.array(z.strictObject({ id: z.string(), text: z.string() })),
-      table: z.record(z.string(), z.record(z.string(), z.number())),
+      table: z.record(z.string(), z.record(z.string(), z.number().nullable())),
       recommend: z.string().nullable(),
     }),
     uses: ["pstack.roles", "session.start.*"],
