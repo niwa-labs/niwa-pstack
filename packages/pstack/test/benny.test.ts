@@ -54,6 +54,8 @@ test("a report starts nothing before the suite promoted Benny, and is triaged an
   expect(made.project.mrs.size).toBe(before.mrs + 1);
   const report = made.harnesses.of("benny-triage:triage").at(-1)?.prompt ?? "";
   expect(report).toContain("<report>\nThe README calls the service payroll.\n</report>");
+  // This report came with no source: the session is told so, and that no issue is filed for it.
+  expect(report).toContain("This report has no source: file no issue for it");
 }, 240_000);
 
 test("a report that is not a bug is triaged and goes no further", async () => {
