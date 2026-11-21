@@ -9,7 +9,7 @@ import { AGENT, BUILTIN_WORKFLOW, plugin } from "@niwa-labs/plugin";
 import type { Plugin } from "@niwa-labs/plugin";
 
 import { authorLaunch, worktreesOf } from "./author.ts";
-import { UNGATED, gatedOf, scriptOf } from "./catalog.ts";
+import { SUITE_BUILTIN, gatedOf, scriptOf } from "./catalog.ts";
 import { BENNY_PORTS, PORT_ACTIONS } from "./ports.ts";
 import { BennyReported, bennyReport, pstackAuthorOptions, pstackRoles } from "./records.ts";
 import { registerPrBindings } from "./pr-binding.ts";
@@ -68,7 +68,7 @@ export function pstackPlugin(options: PstackOptions): Plugin {
     for (const one of gatedOf(options.benny !== undefined)) {
       api.offer(BUILTIN_WORKFLOW, { name: one.name, file: scriptOf(one.name), description: one.description, gated: true, ...(one.triggers === undefined ? {} : { triggers: one.triggers }) });
     }
-    for (const one of UNGATED) api.offer(BUILTIN_WORKFLOW, { name: one.name, file: scriptOf(one.name), description: one.description, suite: true });
+    api.offer(BUILTIN_WORKFLOW, { ...SUITE_BUILTIN, file: scriptOf(SUITE_BUILTIN.name), suite: true });
     registerPrBindings(api);
     for (const one of upstreamActions(() => api.home())) api.action(one);
     api.action(action(pstackRoles, { recovery: "repeat", effect: "read", world: "niwa", run: () => roles }));
