@@ -83,7 +83,7 @@ class Harnesses {
 
   answer(call: HarnessCall): unknown | Promise<unknown> {
     this.calls.push(call);
-    const reply = this.answers[call.step] ?? this.answers[`*:${call.step.slice(call.step.indexOf(":") + 1)}`];
+    const reply = this.answers[call.step] ?? (call.step === "" ? undefined : this.answers[`*:${call.step.slice(call.step.indexOf(":") + 1)}`]);
     if (reply === undefined) throw new Error(`no fake answer for the step "${call.step}" (${call.harness})`);
     return reply(call);
   }
@@ -359,27 +359,61 @@ export function claimAsked(prompt: string): { subject: string; name: string; sha
  */
 export function defaultAnswers(made: PstackHost): Answers {
   let changes = 0;
+  /** What an author does: commit a change in its worktree, and publish the branch to the fake server. */
+  const commit = (call: HarnessCall): string => {
+    if (call.cwd === undefined) throw new Error("the author was started in no directory");
+    changes += 1;
+    const sha = commitFile(call.cwd, `change-${String(changes)}.md`, `change ${String(changes)}\n`);
+    made.project.branches.set(gitIn(call.cwd, "rev-parse", "--abbrev-ref", "HEAD"), sha);
+    return sha;
+  };
+  const verify = (evidence: string) => async (call: HarnessCall) => {
+    const asked = claimAsked(call.prompt);
+    await made.attestAs(call.ref?.split(" ")[1] ?? "", asked.subject, { kind: "verdict", name: asked.name, outcome: "pass", sha: asked.sha });
+    return { outcome: "pass", evidence };
+  };
+  const hypotheses = () => ({ cause: "The README was not updated.", hypotheses: [{ claim: "The README was not updated", status: "confirmed", evidence: "README.md:1" }] });
   return {
     "entry:route": () => ({ kind: "run", playbook: "investigation", task: "Where does this repository describe itself?", more: {} }),
     "investigation:trace": () => ({ summary: "The README says what the service is.", sources: [{ file: "README.md", line: 1 }] }),
     "multi-phase-plan:plan": (call) => ({ kind: "plan", goal: "Deliver the task", nodes: /stack|building on|builds on/i.test(call.prompt.slice(call.prompt.lastIndexOf("Task:"))) ? STACK : PARALLEL }),
-    "*:build": (call) => {
-      if (call.cwd === undefined) throw new Error("the author was started in no directory");
-      changes += 1;
-      const commit = commitFile(call.cwd, `change-${String(changes)}.md`, `change ${String(changes)}\n`);
-      made.project.branches.set(gitIn(call.cwd, "rev-parse", "--abbrev-ref", "HEAD"), commit);
-      return { sha: commit, summary: `Added change ${String(changes)}.` };
+    "*:build": (call) => ({ sha: commit(call), summary: `Added change ${String(changes)}.` }),
+    "*:verify-gates": verify("the gates passed"),
+    "*:verify-live": verify("the page renders"),
+    "trace-forensics:investigate": hypotheses,
+    "runtime-forensics:investigate": hypotheses,
+    "feature:frame": () => ({ shape: "A section of the README.", checkpoint: { blocking: "n/a: one file", independent: "n/a: one file", shared: "n/a: none", decomposition: "one worker: one file" } }),
+    "bug-fix:frame": () => ({ repro: "read README.md", cause: "a typo", evidence: "README.md:1" }),
+    "refactoring:frame": () => ({ contract: "The README reads the same.", pin: "test -f README.md", target: "One section per topic." }),
+    "authoring-a-skill:frame": () => ({ skill: "readme-style", decisions: ["short"], validation: "frontmatter has a name" }),
+    "visual-parity:frame": () => ({ reference: "the design", surface: "the README", differences: ["the heading"] }),
+    "perf-issue:frame": () => ({ measure: "ls | wc -l", direction: "higher", target: 1 }),
+    "autonomous-run:attempt": (call) => ({ change: `committed ${commit(call)}` }),
+    "hillclimb:attempt": (call) => ({ hypothesis: `one more note: ${commit(call)}` }),
+    "prototype:scope": () => ({ kind: "decide", decision: "What the README leads with", variants: [{ name: "usage", idea: "Usage first" }, { name: "architecture", idea: "Architecture first" }] }),
+    "prototype:build": (call) => ({ observed: `built in ${call.cwd ?? ""}` }),
+    "prototype:recommend": () => ({ recommend: "usage", why: "A reader wants to run it first." }),
+    "eval:frame": () => ({
+      success: "The explanation is right and short.",
+      rubric: [
+        { id: "right", text: "It is right." },
+        { id: "short", text: "It is short." },
+        { id: "plain", text: "It is plain." },
+      ],
+      cases: [{ id: "readme", prompt: "What is this repository for?" }],
+    }),
+    // Prompts with no tag: an eval's candidates, which must not see they are graded, and its grader.
+    "": (call) => {
+      if (!call.prompt.startsWith("Grade the subject")) return { answer: "It is the billing service." };
+      const ids = [...call.prompt.matchAll(/^- ([a-z][a-z0-9-]*): /gm)].map((found) => found[1] as string);
+      return { scores: Object.fromEntries(ids.map((id) => [id, 1])) };
     },
-    "*:verify-gates": async (call) => {
-      const asked = claimAsked(call.prompt);
-      await made.attestAs(call.ref?.split(" ")[1] ?? "", asked.subject, { kind: "verdict", name: asked.name, outcome: "pass", sha: asked.sha });
-      return { outcome: "pass", evidence: "the gates passed" };
+    "opening-a-pr:write": () => ({ title: "docs(readme): add the page", sections: [{ heading: "Why", body: "The page needs it." }, { heading: "Verification", body: "Read it." }] }),
+    "pause-safely:checkpoint": (call) => {
+      commit(call);
+      return { intent: "Add the page", state: "half done", verified: [], next: "finish the page", files: ["page.md"], gotchas: [] };
     },
-    "*:verify-live": async (call) => {
-      const asked = claimAsked(call.prompt);
-      await made.attestAs(call.ref?.split(" ")[1] ?? "", asked.subject, { kind: "verdict", name: asked.name, outcome: "pass", sha: asked.sha });
-      return { outcome: "pass", evidence: "the page renders" };
-    },
+    "session-pickup:resume": () => ({ where: "Both pull requests merged.", verified: ["changelog", "contributing"], next: "Nothing is left." }),
   };
 }
 

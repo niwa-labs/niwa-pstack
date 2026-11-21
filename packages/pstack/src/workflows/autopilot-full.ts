@@ -28,7 +28,7 @@ export default workflow(
     }),
     output: z.strictObject({
       status: z.literal("done"),
-      nodes: z.array(z.strictObject({ node: z.string(), pr: z.number().optional(), verified: z.boolean(), go: z.boolean(), landed: z.json().optional() })),
+      nodes: z.array(z.strictObject({ node: z.string(), pr: z.number().optional(), head: z.string().optional(), verified: z.boolean(), go: z.boolean(), landed: z.json().optional() })),
     }),
     uses: [
       "pstack.roles",
@@ -70,16 +70,16 @@ export default workflow(
     );
 
     phase("Land");
-    const rows: Array<{ node: string; pr?: number; verified: boolean; go: boolean; landed?: Shipped }> = [];
+    const rows: Array<{ node: string; pr?: number; head?: string; verified: boolean; go: boolean; landed?: Shipped }> = [];
     for (const [index, node] of nodes.entries()) {
       const done = delivered[node.id] as Delivered;
       const go = goes[index]?.covered === true;
       if (!done.verified || !go) {
-        rows.push({ node: node.id, pr: done.pr.number, verified: done.verified, go });
+        rows.push({ node: node.id, pr: done.pr.number, head: done.pr.head, verified: done.verified, go });
         continue;
       }
       const landed = await ship(`land-${node.id}`, { repo, number: done.pr.number, author: done.built.author, plan: of, nodes: [node.id], base, cwd: done.built.wt.path, method });
-      rows.push({ node: node.id, pr: done.pr.number, verified: true, go, landed });
+      rows.push({ node: node.id, pr: done.pr.number, head: done.pr.head, verified: true, go, landed });
     }
     return { status: "done" as const, nodes: rows.map((row) => ({ ...row, ...(row.landed === undefined ? {} : { landed: row.landed as never }) })) };
   },

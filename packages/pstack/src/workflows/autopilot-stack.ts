@@ -39,7 +39,7 @@ export default workflow(
     output: z.discriminatedUnion("status", [
       z.strictObject({
         status: z.literal("verified"),
-        nodes: z.array(z.strictObject({ node: z.string(), pr: z.number(), base: z.string(), head: z.string(), verified: z.boolean(), author })),
+        nodes: z.array(z.strictObject({ node: z.string(), pr: z.number(), branch: z.string(), base: z.string(), head: z.string(), worktree: z.string(), verified: z.boolean(), author })),
       }),
       z.strictObject({ status: z.literal("restacked"), prs: z.array(z.strictObject({ pr: z.number(), head: z.string(), patchKept: z.boolean(), carried: z.array(z.string()) })) }),
     ]),
@@ -93,14 +93,23 @@ export default workflow(
     const plan = await currentPlan("plan", of);
     const nodes = openNodes(plan);
     const done: Record<string, Delivered> = {};
-    const rows: Array<{ node: string; pr: number; base: string; head: string; verified: boolean; author: { kind: "session"; harness: string; id: string } }> = [];
+    const rows: Array<{ node: string; pr: number; branch: string; base: string; head: string; worktree: string; verified: boolean; author: { kind: "session"; harness: string; id: string } }> = [];
     for (const node of nodes) {
       // A node stacks on the one it builds on: off its branch, based on it; the root of the stack on trunk.
       const lower = node.after.map((id) => done[id]).find((one) => one !== undefined);
       const onto = lower === undefined ? base : lower.built.wt.branch;
       const delivered = await deliver(`node-${node.id}`, { playbook: text, repo, base: onto, worktrees, roles: seats, task: `${task}\n\nThis pull request: ${node.text}`, title: node.text.split("\n")[0]?.slice(0, 120) ?? node.id });
       done[node.id] = delivered;
-      rows.push({ node: node.id, pr: delivered.pr.number, base: onto, head: delivered.pr.head, verified: delivered.verified, author: delivered.built.author });
+      rows.push({
+        node: node.id,
+        pr: delivered.pr.number,
+        branch: delivered.built.wt.branch,
+        base: onto,
+        head: delivered.pr.head,
+        worktree: delivered.built.wt.path,
+        verified: delivered.verified,
+        author: delivered.built.author,
+      });
     }
     return { status: "verified" as const, nodes: rows };
   },

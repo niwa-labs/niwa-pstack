@@ -16,10 +16,26 @@ declare function phase(title: string): void;
 /** The playbooks the lead may pick, with what each is for. */
 const PLAYBOOKS = {
   investigation: "a read-only question about the code, answered with sources",
-  "multi-phase-plan": "a change of several pull requests that needs a plan and the owner's go before anything is built",
-  "autopilot-full": "carry out a plan the owner said go for, to merged pull requests",
-  "autopilot-stack": "carry out a plan to verified pull requests without merging, stacked where one builds on another",
-  shipping: "land a verified stack of pull requests",
+  "trace-forensics": "the cause of a symptom, read from a trace (more: trace)",
+  "runtime-forensics": "the cause of a symptom, from the program running",
+  "bug-fix": "a bug to reproduce, find the cause of and fix",
+  feature: "new behaviour to design and build",
+  refactoring: "a structure to change while the behaviour stays",
+  "perf-issue": "a slow path to measure and fix",
+  hillclimb: "one metric to improve step by step (more: metric, direction, target)",
+  "autonomous-run": "work to drive until a done predicate holds (more: predicate)",
+  prototype: "a design decision to settle with throwaway variants",
+  eval: "variants to compare blind on a rubric (more: variants)",
+  "visual-parity": "a surface to match to its reference",
+  "authoring-a-skill": "a skill to write or change",
+  "multi-phase-plan": "a change of several pull requests that needs a plan and the owner's go before anything is built (more: plan)",
+  "autopilot-full": "carry out a plan the owner said go for, to merged pull requests (more: plan)",
+  "autopilot-stack": "carry out a plan to verified pull requests without merging (more: plan)",
+  shipping: "land a verified stack of pull requests (more: plan, prs)",
+  "opening-a-pr": "open a ready pull request for a published branch (more: branch)",
+  babysit: "watch one pull request's conflicts, threads and CI (more: pr, mode)",
+  "pause-safely": "stop work in a worktree with a checkpoint (more: worktree)",
+  "session-pickup": "pick work up again from its trail (more: plan)",
 } as const;
 
 const NAMES = Object.keys(PLAYBOOKS) as [keyof typeof PLAYBOOKS, ...Array<keyof typeof PLAYBOOKS>];

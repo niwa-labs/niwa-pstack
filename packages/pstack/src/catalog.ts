@@ -33,11 +33,28 @@ export const SUITE = "suite";
 
 /** The playbooks, by the name of their upstream file. */
 export const PLAYBOOKS: readonly Builtin[] = [
-  { name: "investigation", description: "Answer a question about the code with cited sources" },
-  { name: "multi-phase-plan", description: "Write a plan of pull requests and ask the owner's go" },
+  { name: "authoring-a-skill", description: "Write or change a skill and carry it to a pull request" },
+  { name: "autonomous-run", description: "Drive a change until its done predicate holds" },
   { name: "autopilot-full", description: "Carry a plan with the go to merged pull requests" },
   { name: "autopilot-stack", description: "Carry a plan to verified, stacked pull requests" },
+  { name: "babysit", description: "Clear one pull request's conflicts, threads and CI" },
+  { name: "bug-fix", description: "Find a bug's cause and carry its fix to a pull request" },
+  { name: "eval", description: "Compare variants blind on a rubric they never see" },
+  { name: "feature", description: "Design a feature and carry it to a verified pull request" },
+  { name: "hillclimb", description: "Improve one metric an attempt at a time" },
+  { name: "investigation", description: "Answer a question about the code with cited sources" },
+  { name: "multi-phase-plan", description: "Write a plan of pull requests and ask the owner's go" },
+  { name: "opening-a-pr", description: "Open a ready pull request for a published branch" },
+  { name: "pause-safely", description: "Stop cleanly with a checkpoint to resume from" },
+  { name: "perf-issue", description: "Measure a slow path, fix it, and measure the fix" },
+  { name: "prototype", description: "Settle a design decision with throwaway variants" },
+  { name: "refactoring", description: "Reshape code behind a pinned contract" },
+  { name: "runtime-forensics", description: "Find the cause of a symptom from the program running" },
+  { name: "session-pickup", description: "Pick up work from the trail niwa keeps of it" },
   { name: "shipping", description: "Land a verified stack bottom up under the merge policy" },
+  { name: "trace-forensics", description: "Read a trace for the cause of a symptom" },
+  { name: "visual-parity", description: "Match a surface to its reference and verify it live" },
+  { name: "worktree-cleanup", description: "Remove the worktrees a merged pull request was built in", triggers: ["forge.pr.merged"] },
 ];
 
 /** The built-ins that come in as candidates: the entry and the playbooks. */

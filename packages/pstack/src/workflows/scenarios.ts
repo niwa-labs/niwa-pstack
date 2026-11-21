@@ -111,9 +111,10 @@ export const SCENARIOS: readonly Scenario[] = [
       await goOn("parallel", f, written(context, "parallel"));
       return { ...playbook(f, "Carry out the plan."), plan: written(context, "parallel").plan.of };
     },
-    check: answered("done", (value) => {
-      const nodes = value["nodes"] as Array<{ node: string; landed?: { outcome: string } }>;
+    check: answered("done", (value, context) => {
+      const nodes = value["nodes"] as Array<{ node: string; pr: number; head: string; landed?: { outcome: string } }>;
       const unlanded = nodes.filter((one) => one.landed?.outcome !== "merged");
+      context["landed"] = nodes.filter((one) => one.landed?.outcome === "merged");
       return nodes.length > 0 && unlanded.length === 0 ? null : `not landed: ${JSON.stringify(unlanded).slice(0, 500)}`;
     }),
   },
@@ -152,4 +153,97 @@ export const SCENARIOS: readonly Scenario[] = [
     },
     check: answered("landed"),
   },
+  {
+    builtin: "worktree-cleanup",
+    name: "removes the clean worktrees of a merged pull request",
+    args: (_f, context) => {
+      const landed = (context["landed"] as Array<{ pr: number; head: string }> | undefined)?.[0];
+      if (landed === undefined) throw new Error("no pull request was landed by an earlier scenario");
+      return { id: "suite", type: "forge.pr.merged", data: { pr: { repo: { host: "", path: "" }, number: landed.pr }, head: landed.head } };
+    },
+    check: (ended) => {
+      const got = valueOf(ended);
+      if ("failed" in got) return got.failed;
+      return (got.value["removed"] ?? []).length > 0 ? null : `nothing was removed: ${JSON.stringify(got.value)}`;
+    },
+  },
+  {
+    builtin: "opening-a-pr",
+    name: "makes the top of the stack ready for review",
+    args: (f, context) => ({ ...playbook(f, "Open the page's pull request."), branch: top(context).branch, number: top(context).pr }),
+    check: answered("opened", (value, context) => (value["pr"] === top(context).pr ? null : `opened ${JSON.stringify(value["pr"])}, not the branch's own pull request`)),
+  },
+  {
+    builtin: "babysit",
+    name: "checks the top of the stack and finds it ready",
+    args: (f, context) => ({ ...playbook(f, "Watch the page's pull request."), pr: top(context).pr, mode: "check" }),
+    check: answered("merge-ready"),
+  },
+  {
+    builtin: "pause-safely",
+    name: "checkpoints the top of the stack's worktree",
+    args: (f, context) => ({ ...playbook(f, "Pause the page's work."), worktree: top(context).worktree }),
+    check: answered("paused", (value) => (value["clean"] === true ? null : "the worktree was left with uncommitted work")),
+  },
+  {
+    builtin: "session-pickup",
+    name: "picks the first plan up from its trail",
+    args: (f) => ({ ...playbook(f, "Where does the work stand?"), plan: `suite/${f.run}/parallel` }),
+    check: answered("picked-up"),
+  },
+  ...(["trace-forensics", "runtime-forensics"] as const).map(
+    (builtin): Scenario => ({
+      builtin,
+      name: "holds hypotheses against evidence",
+      args: (f) => ({ ...playbook(f, "The README describes the service wrongly: why?"), ...(builtin === "trace-forensics" ? { trace: "README.md" } : {}) }),
+      check: (ended) => {
+        const got = valueOf(ended);
+        if ("failed" in got) return got.failed;
+        return (got.value["hypotheses"] ?? []).length > 0 ? null : "no hypothesis was held";
+      },
+    }),
+  ),
+  ...(["bug-fix", "feature", "refactoring", "authoring-a-skill", "visual-parity", "perf-issue"] as const).map(
+    (builtin): Scenario => ({
+      builtin,
+      name: "carries a change to a verified pull request",
+      args: (f) => playbook(f, `A small ${builtin} on the README of the fixture.`),
+      check: answered("verified", (value) => (builtin === "perf-issue" && value["after"] === null ? "the fix was not measured" : null)),
+    }),
+  ),
+  {
+    builtin: "autonomous-run",
+    name: "drives a change until its predicate holds",
+    args: (f) => ({ ...playbook(f, "Add a change note."), predicate: "ls change-*.md >/dev/null 2>&1", max: 3 }),
+    check: answered("met"),
+  },
+  {
+    builtin: "hillclimb",
+    name: "keeps changes that move the metric",
+    args: (f) => ({ ...playbook(f, "Add change notes."), metric: "ls change-*.md 2>/dev/null | wc -l", direction: "higher", target: 2, min: 2, max: 4 }),
+    check: answered("reached"),
+  },
+  {
+    builtin: "prototype",
+    name: "settles a decision with variants",
+    args: (f) => playbook(f, "Should the README lead with usage or with the architecture?"),
+    check: answered("decided", (value) => ((value["variants"] ?? []).length >= 2 ? null : "fewer than two variants were built")),
+  },
+  {
+    builtin: "eval",
+    name: "grades two variants blind",
+    args: async (f) => {
+      const seats = (await api().call("pstack.roles", {}, { label: "eval-roles" })) as { lead: { harness: string }; reviewer: { harness: string } };
+      return { ...playbook(f, "Which seat explains the README better?"), variants: { lead: seats.lead.harness, reviewer: seats.reviewer.harness } };
+    },
+    check: answered("judged", (value) => (Object.keys(value["table"] ?? {}).length === 2 ? null : "not every variant was graded")),
+  },
 ];
+
+/** The top of the stack an earlier scenario verified. */
+function top(context: Context): { pr: number; branch: string; worktree: string } {
+  const stacked = context["stacked"] as Array<{ pr: number; branch: string; worktree: string }> | undefined;
+  const found = stacked?.at(-1);
+  if (found === undefined) throw new Error("no stack was verified by an earlier scenario");
+  return found;
+}

@@ -4,6 +4,9 @@
 
 import { afterEach, expect, test } from "bun:test";
 
+import { PrMerged } from "@niwa-labs/forge/records";
+import { eventually } from "@niwa-labs/testing";
+
 import { GATED } from "../src/catalog.ts";
 import { builtins, defaultAnswers, pstackHost, recordsOf, registeredAll, syncErrors } from "./support.ts";
 import type { Answers, PstackHost } from "./support.ts";
@@ -20,6 +23,21 @@ async function served(change: (answers: Answers) => Answers = (answers) => answe
   await registeredAll(made.host, GATED.length + 1);
   return made;
 }
+
+/** A merge on the forge, as the forge module records one. */
+const merge = (made: PstackHost, number: number, version: number) =>
+  made.host.emit(PrMerged, {
+    pr: { repo: { host: made.fixture.repo.host, path: made.fixture.repo.path, projectId: 42 }, number },
+    base: "main",
+    head: "a".repeat(40),
+    source: { kind: "observed", version },
+  });
+
+/** The runs of a built-in that were asked for. */
+const runsOf = async (made: PstackHost, name: string) => {
+  const id = (await builtins(made.host))[name]?.id;
+  return (await recordsOf(made.host, "workflow.run.requested")).filter((one) => (one.data as { workflow?: string }).workflow === id);
+};
 
 const versionsOf = async (made: PstackHost, id: string) =>
   ((await made.host.call("workflow.get" as never, { id } as never)) as { versions: Array<{ version: string; candidate?: boolean }> }).versions;
@@ -41,6 +59,11 @@ test("a first install shows the entry and the playbooks as candidates and runs n
   }
   expect((await versionsOf(made, all["suite"]?.id ?? "")).map((one) => one.candidate)).toEqual([undefined]);
   expect((await made.host.call("workflow.installation.list" as never, {} as never)) as { items: unknown[] }).toEqual({ items: [] });
+
+  // A merge on the forge starts no cleanup before a version of it was accepted.
+  await merge(made, 99, 1);
+  await Bun.sleep(1000);
+  expect(await runsOf(made, "worktree-cleanup")).toEqual([]);
 }, 60_000);
 
 test("the suite tries the set by its versions and promotes the candidates in one action", async () => {
@@ -60,11 +83,17 @@ test("the suite tries the set by its versions and promotes the candidates in one
   expect(data.run).toBe(ran.run);
   expect(data.versions.map((one) => one.workflow).sort()).toEqual(GATED.map(({ name }) => all[name]?.id ?? "").sort());
 
-  // The plan with the go landed both its pull requests on the forge; the stack's bottom landed, its top did not.
+  // The plan with the go landed both its pull requests on the forge and the stack's bottom landed; the stack's top
+  // and the six changes the other playbooks carried stay open, for nothing but shipping merges.
   const merged = [...made.project.mrs.values()].filter((mr) => mr.state === "merged").map((mr) => mr.iid);
   const open = [...made.project.mrs.values()].filter((mr) => mr.state === "opened").map((mr) => mr.iid);
   expect(merged).toHaveLength(3);
-  expect(open).toHaveLength(1);
+  expect(open).toHaveLength(7);
+  expect(made.project.mrs.get(4)?.description).toStartWith("## Why");
+
+  // Promoted: a merge on the forge starts the cleanup.
+  await merge(made, 99, 1);
+  await eventually(async () => (await runsOf(made, "worktree-cleanup")).length === 1, 20_000, "the cleanup did not start on the merge");
 
   // Promoted: the entry starts by its id, and runs the accepted investigation.
   const entry = (await made.host.call("workflow.start" as never, {
