@@ -63,6 +63,7 @@ modules before it and the workflow module after it. `bind` is the binding of the
 | pause-safely | A `wip:` commit and a resume note in the worktree the work is in |
 | session-pickup | Where the work stands, from the plan and what was attested on it |
 | worktree-cleanup | On a merge on the forge, removes the clean worktrees the merged head was built in |
+| upstream-sync | Not a playbook: carries the map of the upstream snapshot to a new snapshot, below |
 
 A lane builds in a worktree off trunk with a boxed author. It opens the pull request only for the commit the author
 made; a head on the forge that the author did not answer is a push the lane did not make. Verifiers that did not write
@@ -99,17 +100,58 @@ With `benny`, the plugin offers the agent `benny` to the agents module, an actio
 automations. Every report is triaged as data. A report triaged as a bug is reproduced twice before any code is touched,
 and then fixed in a draft pull request. Benny never merges or deploys.
 
-## The upstream snapshot
+## The upstream snapshot and its map
 
 `upstream/` keeps the pstack plugin of [cursor/plugins](https://github.com/cursor/plugins) (MIT) at the commit in
-`upstream/SOURCE.json`: the operator's skill, the worker rules, the playbooks, the reference they name, and the Benny
-pack. The scripts read the texts from `src/workflows/texts/`, which a refresh writes from the snapshot:
+`upstream/SOURCE.json`: the operator's skill, the worker rules, the playbooks, the references they name, and the Benny
+pack. `upstream/mapping.json` records what became of it in pstack, an entry to a line:
 
-```sh
-bun packages/pstack/scripts/refresh-upstream.ts <path to the pstack folder of a cursor/plugins checkout>
+```json
+{"id":"bug-fix:03","upstream":{"commit":"<upstream commit>","file":"poteto-mode/playbooks/bug-fix.md","range":[476,892]},"ours":[{"commit":"<pstack commit>","file":"packages/pstack/src/workflows/lib/texts.ts","range":[120,610]}],"kind":"prompt"}
 ```
 
-A playbook whose text changed gets a new version, which comes in as a candidate and goes through the suite.
+- A range is `[start, end)` in characters (UTF-16 code units, as `String.slice` counts), and no text is stored. The
+  upstream side names a file of the snapshot at a commit of upstream. Our side names a file of this repository, from
+  its root, at the pstack commit the range was recorded at.
+- `kind` says what became of the block. `prompt`: it goes into a prompt as upstream wrote it. `adapted`: our own text
+  replaces it in a prompt (the text is in `src/workflows/adapted.md`, and the entry links to its range). `code`: code
+  of ours implements it. `dropped`: we do not take it, and `note` says why.
+- The upstream side is covered almost entirely: the files of the snapshot are cut into blocks, and what is not taken is
+  `dropped`, which counts as covered. The target is 95% of upstream's characters. The two upstream ranges of one file at
+  one commit never overlap. Our side is not covered: `ours` only links a block to the code or text that implements or
+  carries it, so several entries may link to the same range, and code of ours with no entry is fine.
+- The texts the scripts import, `src/workflows/texts/*.json`, are assembled from the map: the `prompt` blocks of a file
+  verbatim from the snapshot, the `adapted` ones from our text, in upstream's order. `code` and `dropped` blocks are in
+  no prompt. They are not edited by hand: `assemble` writes them and a test holds them to the map.
+
+The tool is `bun packages/pstack/scripts/upstream-map.ts`:
+
+| Command | What it does |
+|---|---|
+| `check` | Validates the map and reports the coverage of upstream's characters, per file and in total, with the uncovered ranges. For each entry, on each side, it follows the range from the commit it was recorded at to the current one (upstream: to the snapshot's commit; ours: to `HEAD`, or the working tree with `--worktree`) and says unchanged (it only shifted), touched (with the old and the new text of the range) or gone. It also lists upstream text that is new and uncovered. It draws no conclusion. `--out <file>` writes the report as JSON, `--summary` prints the numbers. |
+| `advance` | Records the entries that are unchanged at the current commits and positions. |
+| `accept <id>...` | Records the named entries at the positions their ranges were carried to. |
+| `assemble` | Writes the texts from the map; `--check` only compares. |
+| `refresh <checkout> [<commit>]` | Takes a new snapshot of an upstream checkout at a commit of it, read through git: the checkout's working tree is not read and it is not written. The mapping stays. |
+
+Ranges are carried by comparing the two texts by lines and then by the characters the changed lines share at their
+start and end. `--upstream <checkout>` is needed only while the map has ranges at an upstream commit other than the
+snapshot's.
+
+### Updating upstream
+
+Start `pstack-upstream-sync` with the path of an upstream checkout (and a commit of it, if not its HEAD). It is not
+gated: it changes no host. In a worktree of its own it takes the snapshot and commits it, then loops: the tool measures
+the map, and an author boxed to the worktree works on what the report shows (maps uncovered text, follows touched and
+gone entries into our code and texts, drops what is not taken with the reason), commits, and the unchanged entries are
+recorded again. It stops when the coverage is at least 95% (`min`) and no entry is touched or gone, or after `rounds`
+rounds, and says what is left. What would change what a prompt or a workflow does is not the author's to decide: it
+goes to the owner as a question, and its answer is carried out in a last round. The texts are then assembled from the
+map and committed. The run ends on a branch of commits; the workflows they change come in as candidates and go through
+`pstack-suite` as before.
+
+By hand, the same: `refresh`, then `check`, settle what it shows, `accept` or edit the entries, `advance`, `assemble`.
+The tool runs in a box that must be able to read the checkout.
 
 ## What niwa does not give yet
 
