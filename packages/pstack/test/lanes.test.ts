@@ -120,3 +120,48 @@ test("the owner's go is asked once, attested per node, and does not cover a revi
     [false, undefined],
   ]);
 }, 240_000);
+
+/** A merge-result claim of a pull request's selected merge result, as the fake forge has it. */
+function mergeResultClaim(made: PstackHost, number: number, sha: string) {
+  const pipeline = [...made.project.pipelines].reverse().find((one) => one.ref === `refs/merge-requests/${String(number)}/merge`);
+  const parents = pipeline === undefined ? undefined : made.project.commits.get(pipeline.sha);
+  if (pipeline === undefined || parents?.[0] === undefined) throw new Error(`no merge result of ${String(number)}`);
+  return { kind: "ci", at: "merge-result", sourceSha: sha, targetSha: parents[0], mergeSha: pipeline.sha, pipeline: pipeline.id, pipelineKind: "merge-result" };
+}
+
+test("a merge result a verifier attests does not stand in for the red one the forge reports", async () => {
+  const made = await promoted();
+  made.ci.mergeResult = "failed";
+  const planned = await plannedWithGo(made, "forged-merge-result");
+  // The verifiers, who are not the authors, also attest a green merge result of the pair the forge selected.
+  const verify = made.harnesses.answers["*:verify-gates"];
+  made.harnesses.answers["*:verify-gates"] = async (call) => {
+    const asked = claimAsked(call.prompt);
+    const number = Number(asked.subject.slice(asked.subject.lastIndexOf("/") + 1));
+    await made.attestAs(call.ref?.split(" ")[1] ?? "", asked.subject, mergeResultClaim(made, number, asked.sha));
+    return await verify?.(call);
+  };
+  const done = await run(made, "autopilot-full", { plan: planned.plan.of });
+  for (const node of done.nodes as Array<{ verified: boolean; landed: { outcome: string; missing: Array<{ name: string }> } }>) {
+    expect(node).toMatchObject({ verified: true, landed: { outcome: "refused" } });
+    expect(node.landed.missing.map((one) => one.name)).toEqual(["merge-result"]);
+  }
+}, 240_000);
+
+test("a head the forge reports red after it was verified green does not land", async () => {
+  const made = await promoted();
+  const planned = await run(made, "multi-phase-plan", { plan: "red-later", ask: false });
+  const stacked = await run(made, "autopilot-stack", { plan: planned.plan.of });
+  const change = `${made.fixture.repo.host}/${made.fixture.repo.path}`;
+  for (const node of planned.nodes as Array<{ id: string }>) {
+    await made.asOwner("evidence.attest", { subject: goSubject(planned.plan, node.id), claim: { kind: "verdict", name: "go", outcome: "pass", sha: goDigest(planned.plan, node.id, change) } });
+  }
+  const [bottom] = stacked.nodes as Array<{ node: string; pr: number; head: string; author: unknown }>;
+  if (bottom === undefined) throw new Error("nothing was stacked");
+  // The head's pipeline runs again, and fails: the green one attested when it was verified is not the latest.
+  made.gitlab.pipeline(made.project, { sha: bottom.head, ref: `refs/merge-requests/${String(bottom.pr)}/head`, status: "failed", source: "merge_request_event" });
+  const shipped = await run(made, "shipping", { plan: planned.plan.of, prs: [{ number: bottom.pr, nodes: [bottom.node], author: bottom.author }] });
+  expect(shipped.status).toBe("stopped");
+  expect(shipped.prs[0].missing.map((one: { name: string }) => one.name)).toEqual(["head-ci"]);
+  expect(made.project.mrs.get(bottom.pr)?.state).toBe("opened");
+}, 240_000);
