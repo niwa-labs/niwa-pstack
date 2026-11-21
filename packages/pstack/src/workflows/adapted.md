@@ -122,7 +122,7 @@ starts again from this playbook
 
 ### autopilot-full:19.5
 
-ends by catching them up in one short message to the owner (`message.send`): what changed, what needs them, links
+ends by catching them up in one short message (`message.send`) with what changed, what needs them and links
 
 ### autopilot-full:21.1
 
@@ -151,7 +151,7 @@ Reply with the forge module's `forge.comment.reply`, never with shell built from
 
 ### bug-fix:01.1
 
-Start each subagent with niwa's `session.start` on the harness instance from `harness.list` that fits the job, with an effort to match; where you may not start sessions, do the work yourself in small verified steps.
+Start each subagent with niwa's `session.start` on the harness instance of the author role, with an effort to fit the job; where you may not start sessions, do the work yourself in small verified steps.
 
 ### bug-fix:03.1
 
@@ -172,10 +172,6 @@ step 3's shape design or a fan-out of helpers that challenge it
 ### bug-fix:05.1
 
 If it crosses a function boundary, name the shape first: the data types, the module layout and who calls whom.
-
-### bug-fix:05.3
-
-on the harness instance of the author role
 
 ### bug-fix:07.1
 
@@ -213,17 +209,13 @@ Name the shape: the data types, the module layout and who calls whom.
 
 (separate before you serialize: give each actor its own files, branch or worktree)
 
-### feature:05.1
-
-on the harness instance of the author role
-
 ### feature:05.3
 
 chosen to model the domain
 
 ### feature:05.5
 
-Start each subagent with niwa's `session.start` on the harness instance from `harness.list` that fits the job, with an effort to match; where you may not start sessions, do the work yourself in small verified steps.
+Start each subagent with niwa's `session.start` on the harness instance of the author role, with an effort to fit the job; where you may not start sessions, do the work yourself in small verified steps.
 
 ### feature:05.7
 
@@ -253,13 +245,9 @@ Vet the harness before you freeze it: find what limits the number and rule out t
 
 Perf issue playbook
 
-### hillclimb:09.1
-
-on the harness instance of the author role
-
 ### hillclimb:09.3
 
-Start each subagent with niwa's `session.start` on the harness instance from `harness.list` that fits the job, with an effort to match; where you may not start sessions, do the work yourself in small verified steps.
+Start each subagent with niwa's `session.start` on the harness instance of the author role, with an effort to fit the job; where you may not start sessions, do the work yourself in small verified steps.
 
 ### hillclimb:09.5
 
@@ -333,13 +321,9 @@ by driving the real surface yourself and recording its trace. Vet the baseline, 
 
 If it crosses a function boundary, name the shape first: the data types, the module layout and who calls whom.
 
-### perf-issue:05.3
-
-on the harness instance of the author role
-
 ### perf-issue:05.5
 
-Start each subagent with niwa's `session.start` on the harness instance from `harness.list` that fits the job, with an effort to match; where you may not start sessions, do the work yourself in small verified steps.
+Start each subagent with niwa's `session.start` on the harness instance of the author role, with an effort to fit the job; where you may not start sessions, do the work yourself in small verified steps.
 
 ### perf-issue:05.7
 
@@ -381,13 +365,9 @@ Large or cross-cutting structural work belongs to a plan first (the Multi-phase 
 
 settle the shape before the move
 
-### refactoring:07.3
-
-on the harness instance of the author role
-
 ### refactoring:07.5
 
-Start each subagent with niwa's `session.start` on the harness instance from `harness.list` that fits the job, with an effort to match; where you may not start sessions, do the work yourself in small verified steps.
+Start each subagent with niwa's `session.start` on the harness instance of the author role, with an effort to fit the job; where you may not start sessions, do the work yourself in small verified steps.
 
 ### refactoring:08.3
 
