@@ -4,56 +4,15 @@
 
 import { api } from "./script.ts";
 
-/** One version of a workflow, as `workflow.get` lists it. */
-interface ListedVersion {
-  version: string;
-  candidate?: boolean;
-}
-
-/** One built-in of pstack: its name, id, the version the host runs, and the newest candidate. */
-export interface Registered {
-  name: string;
-  id: string;
-  /** The version the host runs, when one was accepted. */
-  accepted?: string;
-  /** The newest version not accepted yet. */
-  candidate?: string;
-}
-
-/** The built-ins of pstack, by name. */
-export async function registered(key: string): Promise<Record<string, Registered>> {
-  const listed = (await api().call("workflow.list", {}, { label: `${key}-list` })) as { items: Array<{ id: string; builtin?: { plugin: string; name: string } }> };
-  const found: Record<string, Registered> = {};
-  for (const item of listed.items) {
-    if (item.builtin?.plugin !== "pstack") continue;
-    const got = (await api().call("workflow.get", { id: item.id }, { label: `${key}-get-${item.builtin.name}` })) as { versions: ListedVersion[] };
-    const accepted = got.versions.filter((one) => one.candidate !== true).at(-1)?.version;
-    const candidate = got.versions.filter((one) => one.candidate === true).at(-1)?.version;
-    found[item.builtin.name] = { name: item.builtin.name, id: item.id, ...(accepted === undefined ? {} : { accepted }), ...(candidate === undefined ? {} : { candidate }) };
-  }
-  return found;
-}
-
 /** How a run ended, as `workflow.run.finished` records it. */
 type Outcome = { status: "done"; result: unknown } | { status: "failed"; error: { message: string } } | { status: "cancelled" };
 
-/** The version of a built-in a run starts: the one `pins` names, else the one the host runs. */
-function versionOf(found: Registered | undefined, name: string, pins: Readonly<Record<string, string>>): { id: string; version: string } {
-  if (found === undefined) throw new Error(`pstack has no built-in "${name}"`);
-  const version = pins[name] ?? found.accepted;
-  if (version === undefined) throw new Error(`the built-in "${name}" has no accepted version yet: the suite promotes it first`);
-  return { id: found.id, version };
-}
-
-/**
- * Run a built-in of pstack as a child of this run and answer its result: the version `pins` names, else the one the
- * host runs. The end of the child is read once it started and waited for from there, so an end written before the
- * wait began is not missed; a child that did not end with a result throws.
- */
-export async function runBuiltin(key: string, name: string, args: unknown, pins: Readonly<Record<string, string>> = {}): Promise<unknown> {
-  const all = await registered(key);
-  const { id, version } = versionOf(all[name], name, pins);
-  const { run } = (await api().call("workflow.start", { id, version, args }, { label: `${key}-start` })) as { run: string };
+/** Run the host-selected version of a built-in as a child. The journal read and cursor cover a child that already ended. */
+export async function runBuiltin(key: string, name: string, args: unknown): Promise<unknown> {
+  const listed = (await api().call("workflow.list", {}, { label: `${key}-list` })) as { items: Array<{ id: string; builtin?: { plugin: string; name: string } }> };
+  const builtin = listed.items.find((item) => item.builtin?.plugin === "pstack" && item.builtin.name === name);
+  if (builtin === undefined) throw new Error(`pstack has no built-in "${name}"`);
+  const { run } = (await api().call("workflow.start", { id: builtin.id, args }, { label: `${key}-start` })) as { run: string };
   const read = await api().read.records({ types: ["workflow.run.finished"], filter: { run } }, { label: `${key}-ended` });
   const ended = read.records[0]?.data ?? (await api().wait("workflow.run.finished", { filter: { run }, from: read.next, label: `${key}-end` })).data;
   const outcome = (ended as { outcome: Outcome }).outcome;

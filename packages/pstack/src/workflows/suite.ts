@@ -4,7 +4,7 @@
 
 import type { ScriptApi } from "@niwa-labs/script";
 
-import { isRefusal, registered, tryVersion } from "./lib/catalog.ts";
+import { isRefusal, tryVersion } from "./lib/catalog.ts";
 import { repoSchema } from "./lib/inputs.ts";
 import { api } from "./lib/script.ts";
 import { OPTIONAL, SCENARIOS } from "./scenarios.ts";
@@ -28,9 +28,10 @@ export default workflow(
     output: z.discriminatedUnion("status", [
       z.strictObject({ status: z.literal("nothing"), why: z.string() }),
       z.strictObject({ status: z.literal("promoted"), versions: z.array(z.strictObject({ builtin: z.string(), version: z.string() })), rows: z.array(row) }),
-      z.strictObject({ status: z.literal("failed"), rows: z.array(row) }),
+      z.strictObject({ status: z.enum(["failed", "stale"]), rows: z.array(row) }),
     ]),
     uses: [
+      "workflow.builtin.trial",
       "workflow.builtin.promote",
       "pstack.pr.binding",
       "forge.pr.merge@{repo.host}/{repo.path}/pr/*",
@@ -56,7 +57,6 @@ export default workflow(
       "session.end",
       "request.ask",
       "workflow.list",
-      "workflow.get",
       "workflow.start",
       "niwa.records.read",
       "workflow.cancel",
@@ -85,15 +85,13 @@ export default workflow(
   },
   async ({ repo, worktrees, base }) => {
     phase("Find");
-    const all = await registered("builtins");
-    const candidates = Object.values(all).filter((one) => one.candidate !== undefined && one.name !== "suite");
+    const { entries } = (await api().call("workflow.builtin.trial", {}, { label: "pin" })) as {
+      entries: Array<{ name: string; workflow: string; version: string; candidate?: true }>;
+    };
+    const all = new Map(entries.map((entry) => [entry.name, entry]));
+    const candidates = entries.filter((entry) => entry.candidate === true);
     if (candidates.length === 0) return { status: "nothing" as const, why: "no built-in of pstack has a candidate version" };
-    const pins: Record<string, string> = {};
-    for (const one of Object.values(all)) {
-      const version = one.candidate ?? one.accepted;
-      if (version !== undefined) pins[one.name] = version;
-    }
-    const fixture: Fixture = { repo, worktrees, base, pins, run: String(await api().random({ label: "run" })).slice(2, 10) };
+    const fixture: Fixture = { repo, worktrees, base, run: String(await api().random({ label: "run" })).slice(2, 10) };
 
     phase("Try");
     const rows: Array<{ builtin: string; scenario: string; passed: boolean; why?: string }> = [];
@@ -103,17 +101,16 @@ export default workflow(
     // Every scenario runs, on the version of the set under trial, in order: one hands its plan to the next.
     const context: Context = {};
     for (const [index, scenario] of SCENARIOS.entries()) {
-      const found = all[scenario.builtin];
-      const version = pins[scenario.builtin];
+      const found = all.get(scenario.builtin);
       if (found === undefined && OPTIONAL.has(scenario.builtin)) continue;
-      if (found === undefined || version === undefined) {
+      if (found === undefined) {
         rows.push({ builtin: scenario.builtin, scenario: scenario.name, passed: false, why: "the built-in is not registered" });
         continue;
       }
       const key = `try-${String(index)}`;
       let ended: Ended;
       try {
-        ended = await tryVersion(key, found.id, version, await scenario.args(fixture, context));
+        ended = await tryVersion(key, found.workflow, found.version, await scenario.args(fixture, context));
       } catch (error) {
         if (!isRefusal(error)) throw error;
         ended = { ok: false, error: { name: (error as Error).name, message: (error as Error).message } };
@@ -125,7 +122,8 @@ export default workflow(
     if (rows.some((one) => !one.passed)) return { status: "failed" as const, rows };
 
     phase("Promote");
-    await api().call("workflow.builtin.promote", { versions: candidates.map((one) => ({ workflow: one.id, version: one.candidate })) }, { label: "promote" });
-    return { status: "promoted" as const, versions: candidates.map((one) => ({ builtin: one.name, version: one.candidate as string })), rows };
+    const { status } = (await api().call("workflow.builtin.promote", {}, { label: "promote" })) as { status: "promoted" | "stale" };
+    if (status === "stale") return { status, rows };
+    return { status, versions: candidates.map((entry) => ({ builtin: entry.name, version: entry.version })), rows };
   },
 );

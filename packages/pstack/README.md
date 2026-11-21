@@ -111,13 +111,14 @@ Every built-in but the suite is offered gated, the upstream sync among them. A n
 runs on events. Before any version was accepted, the candidate is shown and runs on nothing.
 
 The suite (`pstack-suite`) is started by the owner on a fixture: a repository it may change, on a forge project it may
-merge into. It runs every scenario in order on the set under trial, each built-in started by its version. The entry is
-pinned to the playbook versions of the set, and one scenario hands its plan to the next. The sync's scenario seeds what it
+merge into. Niwa pins the offered set to the suite run, and each scenario starts its pinned version. When the suite exercises the
+entry, Niwa uses the same set for the entry's child runs. An ordinary entry starts accepted playbooks. One scenario
+hands its plan to the next. The sync's scenario seeds what it
 needs itself, in worktrees of the fixture: a tiny upstream checkout, and a branch holding a tiny package folder whose map
 covers its snapshot; upstream is reworded, and the scenario passes when the sync carries the map across and assembles
 the texts. Only when every scenario passes
-does it promote the candidates, in one `workflow.builtin.promote` with its run's id. On its own fixture's plans, the
-suite gives the go itself, as a run may.
+does it ask Niwa to promote the pinned candidates together. If another trial or a new offer changed the set, Niwa
+leaves the accepted versions in place. On its own fixture's plans, the suite gives the go itself, as a run may.
 
 ## Benny
 

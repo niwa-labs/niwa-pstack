@@ -85,6 +85,15 @@ test("the suite tries the set by its versions and promotes the candidates in one
   expect(data.run).toBe(ran.run);
   expect(data.versions.map((one) => one.workflow).sort()).toEqual(gatedOf(true).map(({ name }) => all[name]?.id ?? "").sort());
 
+  const requested = (await recordsOf(made.host, "workflow.run.requested")).map((row) => row.data as {
+    run: string; workflow: string; version: string; parent?: { run: string };
+  });
+  const entryRun = requested.find((row) => row.workflow === all["entry"]?.id)?.run;
+  expect(entryRun).toBeDefined();
+  expect(requested.filter((row) => row.parent?.run === entryRun)).toEqual([
+    expect.objectContaining({ workflow: all["investigation"]?.id, version: data.versions.find((one) => one.workflow === all["investigation"]?.id)?.version }),
+  ]);
+
   // GitLab only conditions on the source SHA. All reviewed pairs stay open.
   const merged = [...made.project.mrs.values()].filter((mr) => mr.state === "merged").map((mr) => mr.iid);
   const open = [...made.project.mrs.values()].filter((mr) => mr.state === "opened").map((mr) => mr.iid);
@@ -94,8 +103,9 @@ test("the suite tries the set by its versions and promotes the candidates in one
   expect(made.project.mrs.get(4)?.description).toStartWith("## Why");
 
   // Promoted: a merge on the forge starts the cleanup.
+  const previousCleanups = (await runsOf(made, "worktree-cleanup")).length;
   await merge(made, 99, 1);
-  await eventually(async () => (await runsOf(made, "worktree-cleanup")).length === 1, 20_000, "the cleanup did not start on the merge");
+  await eventually(async () => (await runsOf(made, "worktree-cleanup")).length === previousCleanups + 1, 20_000, "the cleanup did not start on the merge");
 
   // Promoted: the entry starts by its id, and runs the accepted investigation.
   const entry = (await made.host.call("workflow.start" as never, {
@@ -105,6 +115,12 @@ test("the suite tries the set by its versions and promotes the candidates in one
     timeoutMs: 60_000,
   } as never)) as { outcome?: { status: string; result?: any } };
   expect(entry.outcome).toMatchObject({ status: "done", result: { status: "ran", playbook: "investigation", result: { status: "answered" } } });
+  await expect(made.host.call("workflow.start" as never, {
+    id: all["entry"]?.id,
+    args: { request: "Where is the description?", repo: made.fixture.repo, worktrees: made.fixture.worktrees, pins: { investigation: data.versions.find((one) => one.workflow === all["investigation"]?.id)?.version } },
+  } as never)).rejects.toThrow("pins");
+  expect((await startSuite(made)).outcome).toMatchObject({ status: "done", result: { status: "nothing" } });
+
 }, 240_000);
 
 test("a set with a failing scenario is not promoted, and the candidates stay candidates", async () => {

@@ -16,7 +16,6 @@ export interface Fixture {
   worktrees: string;
   base: string;
   /** The version the suite tries of each built-in, by name. */
-  pins: Record<string, string>;
   /** A name that is new to each run of the suite, for the plans its scenarios write. */
   run: string;
 }
@@ -90,7 +89,7 @@ export const SCENARIOS: readonly Scenario[] = [
   {
     builtin: "entry",
     name: "routes a question to the investigation",
-    args: (f) => ({ request: "Where does this repository describe itself?", repo: f.repo, worktrees: f.worktrees, base: f.base, pins: f.pins }),
+    args: (f) => ({ request: "Where does this repository describe itself?", repo: f.repo, worktrees: f.worktrees, base: f.base }),
     check: answered("ran", (value) => (value["playbook"] === "investigation" ? null : `the entry ran ${JSON.stringify(value["playbook"])}, not the investigation`)),
   },
   {

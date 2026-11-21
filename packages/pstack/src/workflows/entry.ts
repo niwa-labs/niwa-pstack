@@ -59,7 +59,6 @@ export default workflow(
       repo: repoSchema(),
       worktrees: z.string().min(1).describe("The real path of the folder niwa keeps its worktrees in, <home>/worktrees"),
       base: z.string().min(1).default("main"),
-      pins: z.record(z.string(), z.string()).default({}).describe("Versions of the playbooks to run, by name: the suite tries a set this way"),
     }),
     output: z.discriminatedUnion("status", [
       z.strictObject({ status: z.literal("ran"), playbook: z.string(), result: z.json() }),
@@ -91,7 +90,6 @@ export default workflow(
       "session.end",
       "request.ask",
       "workflow.list",
-      "workflow.get",
       "workflow.start",
       "niwa.records.read",
       "evidence.attest",
@@ -105,7 +103,7 @@ export default workflow(
       { title: "Run", detail: "The playbook runs as a child of the entry" },
     ],
   },
-  async ({ request, repo, worktrees, base, pins }) => {
+  async ({ request, repo, worktrees, base }) => {
     const seats = await roles();
     phase("Route");
     const picked = await api().ask(
@@ -126,7 +124,7 @@ export default workflow(
     );
     if (picked.kind === "finish") return { status: "finished" as const, summary: picked.summary };
     phase("Run");
-    const result = await runBuiltin("play", picked.playbook, { ...picked.more, task: picked.task, repo, worktrees, base }, pins);
+    const result = await runBuiltin("play", picked.playbook, { ...picked.more, task: picked.task, repo, worktrees, base });
     return { status: "ran" as const, playbook: picked.playbook, result: result as never };
   },
 );

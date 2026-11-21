@@ -68,7 +68,7 @@ export function pstackPlugin(options: PstackOptions): Plugin {
     for (const one of gatedOf(options.benny !== undefined)) {
       api.offer(BUILTIN_WORKFLOW, { name: one.name, file: scriptOf(one.name), description: one.description, gated: true, ...(one.triggers === undefined ? {} : { triggers: one.triggers }) });
     }
-    for (const one of UNGATED) api.offer(BUILTIN_WORKFLOW, { name: one.name, file: scriptOf(one.name), description: one.description });
+    for (const one of UNGATED) api.offer(BUILTIN_WORKFLOW, { name: one.name, file: scriptOf(one.name), description: one.description, suite: true });
     registerPrBindings(api);
     for (const one of upstreamActions(() => api.home())) api.action(one);
     api.action(action(pstackRoles, { recovery: "repeat", effect: "read", world: "niwa", run: () => roles }));
