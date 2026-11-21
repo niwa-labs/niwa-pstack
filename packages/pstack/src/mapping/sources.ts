@@ -40,7 +40,9 @@ export class UpstreamTexts implements Texts {
   }
 
   same(a: string, b: string): boolean {
-    return a === b || (this.git !== undefined && this.git.resolve(a) !== undefined && this.git.resolve(a) === this.git.resolve(b));
+    if (a === b) return true;
+    const resolved = this.git?.resolve(a);
+    return resolved !== undefined && resolved === this.git?.resolve(b);
   }
 
   private checkout(commit: string): Git {
@@ -87,7 +89,8 @@ export class OursTexts implements Texts {
   }
 
   same(a: string, b: string): boolean {
-    if (a === WORKTREE || b === WORKTREE) return a === b;
+    if (a === b) return true;
+    if (a === WORKTREE || b === WORKTREE) return false;
     return this.git.resolve(a) === this.git.resolve(b);
   }
 

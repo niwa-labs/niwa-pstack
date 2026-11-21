@@ -2,6 +2,9 @@
 
 /** A git checkout, or a folder inside one. Paths are relative to that folder. */
 export class Git {
+  private readonly resolved = new Map<string, string | undefined>();
+  private readonly shown = new Map<string, string | undefined>();
+
   constructor(readonly dir: string) {}
 
   /** Run git here: its exit and its output. */
@@ -19,14 +22,21 @@ export class Git {
 
   /** The commit a revision names, in full; undefined when this checkout has no such commit. */
   resolve(rev: string): string | undefined {
-    const ran = this.run(["rev-parse", "--verify", "--quiet", `${rev}^{commit}`]);
-    return ran.exit === 0 ? ran.out.trim() : undefined;
+    if (!this.resolved.has(rev)) {
+      const ran = this.run(["rev-parse", "--verify", "--quiet", `${rev}^{commit}`]);
+      this.resolved.set(rev, ran.exit === 0 ? ran.out.trim() : undefined);
+    }
+    return this.resolved.get(rev);
   }
 
-  /** A file as a commit holds it; undefined when the commit has no such file. */
+  /** A file as a commit holds it; undefined when the commit has no such file. A commit's files do not change, so they are kept. */
   show(rev: string, path: string): string | undefined {
-    const ran = this.run(["show", `${rev}:./${path}`]);
-    return ran.exit === 0 ? ran.out : undefined;
+    const key = `${rev}\0${path}`;
+    if (!this.shown.has(key)) {
+      const ran = this.run(["show", `${rev}:./${path}`]);
+      this.shown.set(key, ran.exit === 0 ? ran.out : undefined);
+    }
+    return this.shown.get(key);
   }
 
   /** The files under a path as a commit holds them. */
