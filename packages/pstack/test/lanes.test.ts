@@ -4,12 +4,13 @@
 
 import { afterEach, expect, test } from "bun:test";
 
-import { grant, principalOf } from "@niwa-labs/core";
+import { deny, grant, principalOf } from "@niwa-labs/core";
 import { sessionStart } from "@niwa-labs/sessions/records";
-import { connect } from "@niwa-labs/testing";
+import { connect, plugin } from "@niwa-labs/testing";
 
-import { UNGATED, gatedOf } from "../src/catalog.ts";
+import { UNGATED, gatedOf, scriptOf } from "../src/catalog.ts";
 import { goDigest, goSubject } from "../src/policy.ts";
+import { pstackPrBind } from "../src/pr-binding.ts";
 import { pstackAuthorOptions } from "../src/records.ts";
 import { FORGE_HOST, builtins, claimAsked, defaultAnswers, pstackHost, recordsOf, registeredAll } from "./support.ts";
 import type { Answers, PstackHost, PstackHostOptions } from "./support.ts";
@@ -256,10 +257,8 @@ test("standalone shipping binds the author, MR and live target and refuses befor
   expect(made.gitlab.seen("PUT", /\/merge$/)).toHaveLength(0);
 }, 150_000);
 
-test("the author's own verdicts on a bound head cannot satisfy standalone shipping", async () => {
-  const made = await pstackHost({ onlyBuiltins: ["multi-phase-plan", "autopilot-stack", "shipping"] });
-  hosts.push(made);
-  made.harnesses.answers = defaultAnswers(made);
+/** Both verification seats report the author's own evidence in this fixture. */
+function attestAsAuthor(made: PstackHost): void {
   for (const name of ["gates", "live"]) {
     made.harnesses.answers[`*:verify-${name}`] = async call => {
       const asked = claimAsked(call.prompt);
@@ -269,6 +268,13 @@ test("the author's own verdicts on a bound head cannot satisfy standalone shippi
       return { outcome: "pass", evidence: "only the author's verdict" };
     };
   }
+}
+
+test("the author's own verdicts on a bound head cannot satisfy standalone shipping", async () => {
+  const made = await pstackHost({ onlyBuiltins: ["multi-phase-plan", "autopilot-stack", "shipping"] });
+  hosts.push(made);
+  made.harnesses.answers = defaultAnswers(made);
+  attestAsAuthor(made);
   await registeredAll(made.host, 3);
   const planned = await plannedWithGo(made, "self-verdict");
   const stacked = await run(made, "autopilot-stack", { plan: planned.plan.of });
@@ -281,3 +287,48 @@ test("the author's own verdicts on a bound head cannot satisfy standalone shippi
   expect(forged.prs[0].missing.map((one: { name: string }) => one.name)).toEqual(["author"]);
   expect(made.gitlab.seen("PUT", /\/merge$/)).toHaveLength(0);
 }, 150_000);
+
+test("a resumed registered lane binds the open PR and its next head under the stable run", async () => {
+  let interrupt = true;
+  const made = await pstackHost({
+    onlyBuiltins: ["multi-phase-plan", "autopilot-stack", "shipping"],
+    plugins: [plugin("interrupt-receipt", api => api.guard(pstackPrBind, () => interrupt ? deny("fixture interruption after PR opened") : undefined))],
+  });
+  hosts.push(made);
+  made.harnesses.answers = defaultAnswers(made);
+  attestAsAuthor(made);
+  await registeredAll(made.host, 3);
+  const planned = await plannedWithGo(made, "resume-receipt");
+  const flows = await builtins(made.host);
+  const args = { ...made.fixture, task: "Do it.", plan: planned.plan.of };
+  const started = await made.host.call("workflow.start" as never, { id: flows["autopilot-stack"]!.id, args, wait: true, timeoutMs: 8_000 } as never) as { run: string };
+  expect(made.project.mrs.size).toBe(1);
+  const opened = [...made.project.mrs.values()][0]!;
+  expect(await recordsOf(made.host, "pstack.pr.bound")).toHaveLength(0);
+  interrupt = false;
+  const from = `label:node-${planned.nodes[0]!.id}-pr-bind`;
+  await made.asOwner("workflow.resume", { run: started.run, from });
+  const result = await made.host.call("workflow.wait" as never, { run: started.run, timeoutMs: 8_000 } as never) as { outcome?: { status: string; result: { nodes: Array<{ node: string; pr: number; head: string; author: unknown }> } } };
+  expect(result.outcome?.status).toBe("done");
+  const nodes = result.outcome!.result.nodes;
+  expect(nodes.map(one => one.pr)).toEqual([opened.iid, opened.iid + 1]);
+  expect(nodes[1]!.head).not.toBe(opened.sha);
+  expect(made.gitlab.seen("POST", /\/merge_requests$/)).toHaveLength(2);
+  const { host, path } = made.fixture.repo;
+  for (const node of nodes) {
+    expect(await made.host.call("pstack.pr.binding" as never, { repo: { host, path }, number: node.pr, head: node.head } as never))
+      .toMatchObject({ binding: { run: started.run, author: node.author } });
+  }
+  const last = nodes[1]!;
+  const shipped = await run(made, "shipping", { plan: planned.plan.of, prs: [{ number: last.pr, nodes: [last.node] }] });
+  expect(shipped.prs[0].missing.map((one: { name: string }) => one.name)).toEqual(["gates", "live"]);
+
+  // The unarchived source has the same code, name and grants. Its inherited origin must not authorize it.
+  await made.asOwner("workflow.revise", { run: started.run, file: scriptOf("autopilot-stack"), from });
+  const revised = await made.host.call("workflow.wait" as never, { run: started.run, timeoutMs: 8_000 } as never) as { outcome?: { status: string }; reason?: string };
+  expect(revised).toMatchObject({ state: "paused", reason: `step ${from}: failed` });
+  const failures = await recordsOf(made.host, "niwa.step.outcome");
+  expect(failures.some(row => JSON.stringify(row.data).includes("only a registered pstack authoring lane can bind a pull request"))).toBe(true);
+  expect(await recordsOf(made.host, "pstack.pr.bound")).toHaveLength(2);
+  expect(made.gitlab.seen("POST", /\/merge_requests$/)).toHaveLength(2);
+}, 60_000);
