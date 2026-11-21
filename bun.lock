@@ -22,6 +22,7 @@
         "@niwa-labs/plan": "*",
         "@niwa-labs/plugin": "*",
         "@niwa-labs/script": "*",
+        "@niwa-labs/sessions": "*",
         "@niwa-labs/watch": "*",
         "zod": "^4.6.7",
       },
@@ -79,6 +80,8 @@
     "@niwa-labs/pstack": ["@niwa-labs/pstack@workspace:packages/pstack"],
 
     "@niwa-labs/script": ["@niwa-labs/script@link:../niwa/packages/script", {}],
+
+    "@niwa-labs/sessions": ["@niwa-labs/sessions@link:../niwa/packages/sessions", {}],
 
     "@niwa-labs/testing": ["@niwa-labs/testing@link:../niwa/packages/testing", {}],
 
