@@ -30,6 +30,9 @@ export const forgeRepo = (repo: Repo): { host: string; path: string } => ({ host
 /** The subject of a pull request, as evidence names it: `gitlab.example.com/acme/billing/pr/7`. */
 export const prSubject = (repo: Repo | { host: string; path: string }, number: number): string => `${repo.host}/${repo.path}/pr/${String(number)}`;
 
+/** An address, as evidence binds a session that attests. */
+export type SessionAddress = { kind: "session"; harness: string; id: string };
+
 /** A seat of a role, as the options of an `agent()` call. */
 export interface Seat {
   harness: string;

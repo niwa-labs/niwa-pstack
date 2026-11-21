@@ -61,6 +61,11 @@ export async function runBuiltin(key: string, name: string, args: unknown, pins:
   throw new Error(`the playbook "${name}" (${run}) ended ${outcome.status}${outcome.status === "failed" ? `: ${outcome.error.message}` : ""}`);
 }
 
+/** Whether an error is a refusal a script may catch, not a signal of the runtime that pauses or cancels the run. */
+export function isRefusal(error: unknown): boolean {
+  return error instanceof Error && error.name !== "PauseSignal" && error.name !== "Cancelled";
+}
+
 /** How long the suite gives one scenario to end. */
 export const SCENARIO_MS = 30 * 60_000;
 
@@ -70,6 +75,8 @@ export async function tryVersion(key: string, id: string, version: string, args:
   try {
     started = (await api().call("workflow.start", { id, version, args, wait: true, timeoutMs }, { label: `${key}-start` })) as typeof started;
   } catch (error) {
+    // A refusal of the start is the scenario's failure; a step that failed pauses this run, as it should.
+    if (!isRefusal(error)) throw error;
     return { ok: false, error: { name: (error as Error).name, message: (error as Error).message } };
   }
   if (started.state === "finished" && started.outcome?.status === "done") return { ok: true, value: started.outcome.result };

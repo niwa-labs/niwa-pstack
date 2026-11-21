@@ -8,15 +8,18 @@ import { join } from "node:path";
 
 import { z } from "zod";
 
+import { action, actionRef, grant, principalOf } from "@niwa-labs/core";
 import { evidence } from "@niwa-labs/evidence";
 import { forge, secret } from "@niwa-labs/forge";
 import { plan } from "@niwa-labs/plan";
 import type { CallerBinding, Plugin } from "@niwa-labs/plugin";
-import { connectAsOwner, createNiwa, eventually, git, plugin, requests, stubAction, tempDir, timers, workflow } from "@niwa-labs/testing";
+import { connect, connectAsOwner, createNiwa, eventually, git, plugin, requests, stubAction, tempDir, timers, workflow } from "@niwa-labs/testing";
 import type { Host } from "@niwa-labs/testing";
 
-import { FakeGitLab } from "../node_modules/@niwa-labs/forge/test/fake-gitlab.ts";
+import { FakeGitLab, sha } from "../node_modules/@niwa-labs/forge/test/fake-gitlab.ts";
 import type { FakeProject } from "../node_modules/@niwa-labs/forge/test/fake-gitlab.ts";
+import { addressingOf } from "../src/binding.ts";
+import type { Binding } from "../src/binding.ts";
 import { pstackPlugin } from "../src/plugin.ts";
 import type { RolesInput } from "../src/roles.ts";
 
@@ -78,9 +81,9 @@ class Harnesses {
   readonly sessions = new Map<string, { harness: string; cwd?: string; visible?: string[] }>();
   answers: Answers = {};
 
-  answer(call: HarnessCall): unknown {
+  answer(call: HarnessCall): unknown | Promise<unknown> {
     this.calls.push(call);
-    const reply = this.answers[call.step];
+    const reply = this.answers[call.step] ?? this.answers[`*:${call.step.slice(call.step.indexOf(":") + 1)}`];
     if (reply === undefined) throw new Error(`no fake answer for the step "${call.step}" (${call.harness})`);
     return reply(call);
   }
@@ -99,23 +102,34 @@ export interface PstackHost {
   gitlab: FakeGitLab;
   project: FakeProject;
   harnesses: Harnesses;
+  /** How the pipelines of the next pull requests end; a test may change it as it goes. */
+  ci: { head: string; mergeResult: string };
   /** The fixture a run of the suite or the entry is given. */
   fixture: { repo: { host: string; path: string; local: string }; worktrees: string; base: string };
+  /** Call an action as the owner, from the owner's own client. */
+  asOwner(name: string, input: unknown): Promise<unknown>;
   /** Answer the owner's next open question with these option ids. */
   answer(ids: string[]): Promise<void>;
+  /** Attest as the session whose mark is `mark`, as its own client: what a verifier does with `evidence.attest`. */
+  attestAs(mark: string, subject: string, claim: Record<string, unknown>): Promise<void>;
   close(): Promise<void>;
 }
 
-/** A `proc.run` that runs the command in its cwd, with no box. */
-function fakeProc(home: string): Plugin {
+/** A `proc.run` that runs the command in its cwd, with no box: its target is the cwd, as the real action's is. */
+function fakeProc(): Plugin {
+  const ref = actionRef("proc.run", {
+    description: "Run a command in its cwd.",
+    input: z.looseObject({ cmd: z.array(z.string()).min(1), cwd: z.string().min(1) }),
+    output: z.any(),
+    target: (input) => input.cwd,
+  });
   return plugin("fake-proc", (api) =>
     api.action(
-      stubAction("proc.run", {
-        home,
-        input: z.looseObject({ cmd: z.array(z.string()).min(1), cwd: z.string().min(1) }),
-        output: z.any(),
+      action(ref, {
         recovery: "repeat",
-        result: ({ cmd, cwd }) => {
+        effect: "write",
+        world: "local",
+        run: ({ cmd, cwd }) => {
           const ran = Bun.spawnSync(cmd, { cwd, stdout: "pipe", stderr: "pipe" });
           const tail = (ran.stdout.toString() + ran.stderr.toString()).slice(-4096);
           return {
@@ -133,10 +147,14 @@ function fakeProc(home: string): Plugin {
   );
 }
 
-/** Sessions started and asked through `session.start` and `session.ask`, answered by the fakes. */
-function fakeSessions(home: string, harnesses: Harnesses): Plugin {
+/**
+ * Sessions started and asked through `session.start` and `session.ask`, answered by the fakes. Like the sessions
+ * module, it says which session a token's mark names, so a session that attests is bound to its address; the mark
+ * of a fake session is its native id.
+ */
+function fakeSessions(home: string, harnesses: Harnesses): Binding {
   let made = 0;
-  return plugin("fake-sessions", (api) => {
+  const made_ = plugin("sessions", (api) => {
     api.action(
       stubAction("session.start", {
         home,
@@ -158,14 +176,22 @@ function fakeSessions(home: string, harnesses: Harnesses): Plugin {
         input: z.looseObject({ session: z.string(), prompt: z.string() }),
         output: z.any(),
         recovery: "repeat",
-        result: (input) => {
+        result: async (input) => {
           const session = harnesses.sessions.get(input.session);
           if (session === undefined) throw new Error(`no fake session ${input.session}`);
-          const value = harnesses.answer({ harness: session.harness, step: stepOf(input.prompt), prompt: input.prompt, ref: input.session, ...(session.cwd === undefined ? {} : { cwd: session.cwd }), ...(session.visible === undefined ? {} : { visible: session.visible }) });
+          const value = await harnesses.answer({ harness: session.harness, step: stepOf(input.prompt), prompt: input.prompt, ref: input.session, ...(session.cwd === undefined ? {} : { cwd: session.cwd }), ...(session.visible === undefined ? {} : { visible: session.visible }) });
           return { value };
         },
       }),
     );
+  });
+  return Object.assign(made_, {
+    bind: (fallback?: CallerBinding): CallerBinding => (caller) => {
+      const principal = caller.kind === "client" ? caller.principal : undefined;
+      const found = principal?.kind === "session" ? [...harnesses.sessions.entries()].find(([ref]) => ref.endsWith(` ${principal.id}`)) : undefined;
+      if (found === undefined || principal === undefined) return fallback?.(caller);
+      return { kind: "session", harness: found[1].harness, id: principal.id };
+    },
   });
 }
 
@@ -180,17 +206,38 @@ function fakeAgents(home: string, harnesses: Harnesses) {
         input: z.looseObject({ prompt: z.string(), cwd: z.string().optional(), visible: z.array(z.string()).optional() }),
         output: z.any(),
         recovery: "repeat",
-        result: (input) =>
-          harnesses.answer({ harness, step: stepOf(input.prompt), prompt: input.prompt, ...(input.cwd === undefined ? {} : { cwd: input.cwd }), ...(input.visible === undefined ? {} : { visible: input.visible }) }),
+        result: async (input) =>
+          await harnesses.answer({ harness, step: stepOf(input.prompt), prompt: input.prompt, ...(input.cwd === undefined ? {} : { cwd: input.cwd }), ...(input.visible === undefined ? {} : { visible: input.visible }) }),
       }),
     ]),
   );
 }
 
+/**
+ * The fake server's fetch, with a CI: a pull request opened gets a pipeline of its head and one of its merge result,
+ * the merge of its head into the local trunk's tip, ending as `ci` says.
+ */
+function withCi(gitlab: FakeGitLab, project: FakeProject, repo: string, ci: { head: string; mergeResult: string }): FakeGitLab["fetch"] {
+  return async (url, init) => {
+    const answered = await gitlab.fetch(url, init);
+    if (init.method === "POST" && /\/merge_requests$/.test(new URL(url).pathname) && answered.status === 201) {
+      const mr = (await answered.clone().json()) as { iid: number; sha: string };
+      const target = gitIn(repo, "rev-parse", "main");
+      const merge = sha(`merge-result-${String(mr.iid)}-${mr.sha}`);
+      project.commits.set(merge, [target, mr.sha]);
+      gitlab.pipeline(project, { sha: mr.sha, ref: `refs/merge-requests/${String(mr.iid)}/head`, status: ci.head, source: "merge_request_event" });
+      gitlab.pipeline(project, { sha: merge, ref: `refs/merge-requests/${String(mr.iid)}/merge`, status: ci.mergeResult, source: "merge_request_event" });
+    }
+    return answered;
+  };
+}
+
 /** What a test host is made with. */
 export interface PstackHostOptions {
-  /** The binding evidence binds its callers with. Default: the evidence module's own. */
+  /** The binding evidence binds its callers with. Default: pstack's, over the fake sessions. */
   readonly bind?: CallerBinding;
+  /** How the pipelines a new pull request gets end: its head's and its merge result's. Default: both succeed. */
+  readonly ci?: { readonly head?: string; readonly mergeResult?: string };
   /** More plugins, installed before the workflow module. */
   readonly plugins?: readonly Plugin[];
 }
@@ -220,21 +267,23 @@ export async function pstackHost(options: PstackHostOptions = {}): Promise<Pstac
 
   const harnesses = new Harnesses();
   const agents = fakeAgents(home, harnesses);
+  const sessions = fakeSessions(home, harnesses);
+  const ci = { head: options.ci?.head ?? "success", mergeResult: options.ci?.mergeResult ?? "success" };
   const host = createNiwa({ home });
   host.use(
     requests(),
     timers([]),
     git({ cleanup: false }),
-    fakeProc(home),
-    fakeSessions(home, harnesses),
+    fakeProc(),
+    sessions,
     plugin("fake-agents", (api) => {
       for (const one of Object.values(agents)) api.action(one);
     }),
-    forge({ servers: [{ host: FORGE_HOST, url: gitlab.url, token: secret("GITLAB_TOKEN") }], fetch: gitlab.fetch, env: {}, poll: false }),
-    evidence(options.bind === undefined ? {} : { bind: options.bind }),
+    forge({ servers: [{ host: FORGE_HOST, url: gitlab.url, token: secret("GITLAB_TOKEN") }], fetch: withCi(gitlab, project, repo, ci), env: {}, poll: false }),
+    evidence({ bind: options.bind ?? addressingOf([sessions]) }),
     plan(),
     ...(options.plugins ?? []),
-    pstackPlugin({ roles: ROLES }),
+    pstackPlugin({ roles: ROLES, forges: [FORGE_HOST] }),
     workflow({ agents }),
   );
   await host.serve();
@@ -248,6 +297,7 @@ export async function pstackHost(options: PstackHostOptions = {}): Promise<Pstac
     gitlab,
     project,
     harnesses,
+    ci,
     fixture: { repo: { host: FORGE_HOST, path: PROJECT, local: repo }, worktrees, base: "main" },
     answer: async (ids) => {
       let id: string | undefined;
@@ -257,6 +307,16 @@ export async function pstackHost(options: PstackHostOptions = {}): Promise<Pstac
         return id !== undefined;
       }, 20_000, "the owner was not asked");
       await owner.call("request.answer" as never, { id, answer: { ids } } as never);
+    },
+    asOwner: async (name, input) => await owner.call(name as never, input as never),
+    attestAs: async (mark, subject, claim) => {
+      const token = host.issueToken(principalOf("session", mark), { grant: grant(["evidence.attest"]) });
+      const client = await connect({ home, id: `session:${mark}`, token });
+      try {
+        await client.call("evidence.attest" as never, { subject, claim } as never);
+      } finally {
+        await client.close().catch(() => {});
+      }
     },
     close: async () => {
       await owner.close().catch(() => {});
@@ -274,4 +334,70 @@ export async function builtins(host: Host): Promise<Record<string, { id: string;
 /** The records of a type. */
 export async function recordsOf(host: Host, type: string): Promise<Array<{ data: unknown; seq: number }>> {
   return (await host.records.read({ types: [type] })).map((row) => ({ data: row.data, seq: row.seq }));
+}
+
+/** The node ids a fake lead plans: two independent pull requests, or a stack of two when the task asks for one. */
+const PARALLEL = [
+  { id: "changelog", text: "Add a changelog", after: [], files: ["CHANGELOG.md"] },
+  { id: "contributing", text: "Add a contributing guide", after: [], files: ["CONTRIBUTING.md"] },
+];
+const STACK = [
+  { id: "settings", text: "Add a settings module", after: [], files: ["settings.md"] },
+  { id: "page", text: "Add a page that uses the settings", after: ["settings"], files: ["page.md"] },
+];
+
+/** The claim a lane asks a verifier to attest, as its prompt names it. */
+export function claimAsked(prompt: string): { subject: string; name: string; sha: string } {
+  const found = /subject "([^"]+)", claim \{ kind: "verdict", name: "([^"]+)", outcome: "pass" or "fail", sha: "([0-9a-f]+)" \}/.exec(prompt);
+  if (found === null) throw new Error("the verifier was not told what to attest");
+  return { subject: found[1] as string, name: found[2] as string, sha: found[3] as string };
+}
+
+/**
+ * Answers that carry every playbook through on the fakes: the lead routes to the investigation and plans, the author
+ * commits in its worktree and publishes the branch to the fake server, and a verifier attests a pass as itself.
+ */
+export function defaultAnswers(made: PstackHost): Answers {
+  let changes = 0;
+  return {
+    "entry:route": () => ({ kind: "run", playbook: "investigation", task: "Where does this repository describe itself?", more: {} }),
+    "investigation:trace": () => ({ summary: "The README says what the service is.", sources: [{ file: "README.md", line: 1 }] }),
+    "multi-phase-plan:plan": (call) => ({ kind: "plan", goal: "Deliver the task", nodes: /stack|building on|builds on/i.test(call.prompt.slice(call.prompt.lastIndexOf("Task:"))) ? STACK : PARALLEL }),
+    "*:build": (call) => {
+      if (call.cwd === undefined) throw new Error("the author was started in no directory");
+      changes += 1;
+      const commit = commitFile(call.cwd, `change-${String(changes)}.md`, `change ${String(changes)}\n`);
+      made.project.branches.set(gitIn(call.cwd, "rev-parse", "--abbrev-ref", "HEAD"), commit);
+      return { sha: commit, summary: `Added change ${String(changes)}.` };
+    },
+    "*:verify-gates": async (call) => {
+      const asked = claimAsked(call.prompt);
+      await made.attestAs(call.ref?.split(" ")[1] ?? "", asked.subject, { kind: "verdict", name: asked.name, outcome: "pass", sha: asked.sha });
+      return { outcome: "pass", evidence: "the gates passed" };
+    },
+    "*:verify-live": async (call) => {
+      const asked = claimAsked(call.prompt);
+      await made.attestAs(call.ref?.split(" ")[1] ?? "", asked.subject, { kind: "verdict", name: asked.name, outcome: "pass", sha: asked.sha });
+      return { outcome: "pass", evidence: "the page renders" };
+    },
+  };
+}
+
+/** The steps that failed, by the prefix of their key: the workflow module's sync by default. */
+export async function syncErrors(host: Host, prefix = "sync:"): Promise<string[]> {
+  return (await host.records.read({ types: ["niwa.step.outcome"] }))
+    .map((row) => row.data as { key: string; outcome: { status: string; error?: string } })
+    .filter((one) => one.key.startsWith(prefix) && one.outcome.status === "failed")
+    .map((one) => `${one.key}: ${one.outcome.error ?? ""}`);
+}
+
+/** Wait until every built-in of pstack is registered, or fail with why the sync refused one. */
+export async function registeredAll(host: Host, count: number): Promise<void> {
+  const deadline = Date.now() + 30_000;
+  while (Object.keys(await builtins(host)).length < count) {
+    const errors = await syncErrors(host);
+    if (errors.length > 0) throw new Error(`pstack's built-ins were not registered:\n${errors.join("\n")}`);
+    if (Date.now() > deadline) throw new Error("pstack's built-ins were not registered in time");
+    await Bun.sleep(100);
+  }
 }

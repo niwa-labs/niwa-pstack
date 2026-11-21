@@ -4,11 +4,11 @@
 
 import type { ScriptApi } from "@niwa-labs/script";
 
-import { registered, tryVersion } from "./lib/catalog.ts";
+import { isRefusal, registered, tryVersion } from "./lib/catalog.ts";
 import { repoSchema } from "./lib/inputs.ts";
 import { api } from "./lib/script.ts";
 import { SCENARIOS } from "./scenarios.ts";
-import type { Ended, Fixture } from "./scenarios.ts";
+import type { Context, Ended, Fixture } from "./scenarios.ts";
 
 declare const workflow: ScriptApi["workflow"];
 declare const z: ScriptApi["z"];
@@ -47,6 +47,7 @@ export default workflow(
       "pstack.roles",
       "session.start.*",
       "session.start",
+      "pstack.author.start",
       "session.ask",
       "request.ask",
       "workflow.list",
@@ -76,18 +77,32 @@ export default workflow(
       const version = one.candidate ?? one.accepted;
       if (version !== undefined) pins[one.name] = version;
     }
-    const fixture: Fixture = { repo, worktrees, base, pins };
+    const fixture: Fixture = { repo, worktrees, base, pins, run: String(await api().random({ label: "run" })).slice(2, 10) };
 
     phase("Try");
     const rows: Array<{ builtin: string; scenario: string; passed: boolean; why?: string }> = [];
     for (const one of candidates) {
-      const scenarios = SCENARIOS.filter((scenario) => scenario.builtin === one.name);
-      if (scenarios.length === 0) rows.push({ builtin: one.name, scenario: "-", passed: false, why: "the built-in has no scenario" });
-      for (const [index, scenario] of scenarios.entries()) {
-        const ended: Ended = await tryVersion(`try-${one.name}-${String(index)}`, one.id, one.candidate as string, scenario.args(fixture));
-        const why = scenario.check(ended);
-        rows.push({ builtin: one.name, scenario: scenario.name, passed: why === null, ...(why === null ? {} : { why }) });
+      if (!SCENARIOS.some((scenario) => scenario.builtin === one.name)) rows.push({ builtin: one.name, scenario: "-", passed: false, why: "the built-in has no scenario" });
+    }
+    // Every scenario runs, on the version of the set under trial, in order: one hands its plan to the next.
+    const context: Context = {};
+    for (const [index, scenario] of SCENARIOS.entries()) {
+      const found = all[scenario.builtin];
+      const version = pins[scenario.builtin];
+      if (found === undefined || version === undefined) {
+        rows.push({ builtin: scenario.builtin, scenario: scenario.name, passed: false, why: "the built-in is not registered" });
+        continue;
       }
+      const key = `try-${String(index)}`;
+      let ended: Ended;
+      try {
+        ended = await tryVersion(key, found.id, version, await scenario.args(fixture, context));
+      } catch (error) {
+        if (!isRefusal(error)) throw error;
+        ended = { ok: false, error: { name: (error as Error).name, message: (error as Error).message } };
+      }
+      const why = scenario.check(ended, context);
+      rows.push({ builtin: scenario.builtin, scenario: scenario.name, passed: why === null, ...(why === null ? {} : { why }) });
     }
     if (rows.some((one) => !one.passed)) return { status: "failed" as const, rows };
 

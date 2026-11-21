@@ -16,12 +16,21 @@ declare function phase(title: string): void;
 /** The playbooks the lead may pick, with what each is for. */
 const PLAYBOOKS = {
   investigation: "a read-only question about the code, answered with sources",
+  "multi-phase-plan": "a change of several pull requests that needs a plan and the owner's go before anything is built",
+  "autopilot-full": "carry out a plan the owner said go for, to merged pull requests",
+  "autopilot-stack": "carry out a plan to verified pull requests without merging, stacked where one builds on another",
+  shipping: "land a verified stack of pull requests",
 } as const;
 
 const NAMES = Object.keys(PLAYBOOKS) as [keyof typeof PLAYBOOKS, ...Array<keyof typeof PLAYBOOKS>];
 
 const decision = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("run"), playbook: z.enum(NAMES), task: z.string().min(1).max(4000) }),
+  z.strictObject({
+    kind: z.literal("run"),
+    playbook: z.enum(NAMES),
+    task: z.string().min(1).max(4000),
+    more: z.record(z.string(), z.json()).default({}).describe("What else the playbook takes, by field: the plan's subject, a pull request's number"),
+  }),
   z.strictObject({ kind: z.literal("finish"), summary: z.string().min(1).max(2000) }),
 ]);
 
@@ -57,6 +66,7 @@ export default workflow(
       "pstack.roles",
       "session.start.*",
       "session.start",
+      "pstack.author.start",
       "session.ask",
       "request.ask",
       "workflow.list",
@@ -84,6 +94,7 @@ export default workflow(
         worker.text.trim(),
         "",
         "You lead pstack. Pick the one playbook this request needs and restate the task for it, or finish with the reason none fits.",
+        "Give in `more` what else the playbook takes that the request names, such as the subject of a plan.",
         "Do not do the work yourself.",
         "",
         ...Object.entries(PLAYBOOKS).map(([name, what]) => `- ${name}: ${what}`),
@@ -94,7 +105,7 @@ export default workflow(
     );
     if (picked.kind === "finish") return { status: "finished" as const, summary: picked.summary };
     phase("Run");
-    const result = await runBuiltin("play", picked.playbook, { task: picked.task, repo, worktrees, base }, pins);
+    const result = await runBuiltin("play", picked.playbook, { ...picked.more, task: picked.task, repo, worktrees, base }, pins);
     return { status: "ran" as const, playbook: picked.playbook, result: result as never };
   },
 );

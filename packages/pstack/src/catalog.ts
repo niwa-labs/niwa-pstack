@@ -34,6 +34,10 @@ export const SUITE = "suite";
 /** The playbooks, by the name of their upstream file. */
 export const PLAYBOOKS: readonly Builtin[] = [
   { name: "investigation", description: "Answer a question about the code with cited sources" },
+  { name: "multi-phase-plan", description: "Write a plan of pull requests and ask the owner's go" },
+  { name: "autopilot-full", description: "Carry a plan with the go to merged pull requests" },
+  { name: "autopilot-stack", description: "Carry a plan to verified, stacked pull requests" },
+  { name: "shipping", description: "Land a verified stack bottom up under the merge policy" },
 ];
 
 /** The built-ins that come in as candidates: the entry and the playbooks. */
