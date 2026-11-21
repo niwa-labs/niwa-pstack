@@ -4,6 +4,7 @@
 
 import { afterEach, expect, test } from "bun:test";
 
+import { AccessGranted, runIdOfPrincipal } from "@niwa-labs/core";
 import { PrMerged } from "@niwa-labs/forge/records";
 import { eventually } from "@niwa-labs/testing";
 
@@ -85,13 +86,30 @@ test("the suite tries the set by its versions and promotes the candidates in one
   expect(data.run).toBe(ran.run);
   expect(data.versions.map((one) => one.workflow).sort()).toEqual(gatedOf(true).map(({ name }) => all[name]?.id ?? "").sort());
 
-  const requested = (await recordsOf(made.host, "workflow.run.requested")).map((row) => row.data as {
-    run: string; workflow: string; version: string; parent?: { run: string };
+  const trials = (await recordsOf(made.host, "workflow.builtin.trial")).map((row) => row.data as {
+    run: string;
+    entries: Array<{ workflow: string; version: string; candidate?: true }>;
   });
-  const entryRun = requested.find((row) => row.workflow === all["entry"]?.id)?.run;
-  expect(entryRun).toBeDefined();
-  expect(requested.filter((row) => row.parent?.run === entryRun)).toEqual([
-    expect.objectContaining({ workflow: all["investigation"]?.id, version: data.versions.find((one) => one.workflow === all["investigation"]?.id)?.version }),
+  const trial = trials.find((one) => one.run === ran.run);
+  expect(trial?.entries.filter((one) => one.candidate).map(({ workflow, version }) => ({ workflow, version }))).toEqual(data.versions);
+
+  const requested = (await recordsOf(made.host, "workflow.run.requested")).map((row) => row.data as {
+    run: string; workflow: string; version: string;
+  });
+  // workflow.start binds its child to the caller through the grant. RunRequested.parent is used by flow calls.
+  const parents = new Map<string, string>();
+  for (const row of await recordsOf(made.host, AccessGranted.name)) {
+    const { principal, parent } = AccessGranted.schema.parse(row.data);
+    if (principal.kind === "run" && parent?.principal.kind === "run") {
+      parents.set(runIdOfPrincipal(principal.id), runIdOfPrincipal(parent.principal.id));
+    }
+  }
+  const pinned = (name: string) => trial?.entries.find((one) => one.workflow === all[name]?.id);
+  const entryRuns = requested.filter((one) => parents.get(one.run) === ran.run && one.workflow === all["entry"]?.id);
+  expect(entryRuns).toEqual([expect.objectContaining({ version: pinned("entry")?.version })]);
+  const [entryRun] = entryRuns;
+  expect(requested.filter((one) => parents.get(one.run) === entryRun?.run)).toEqual([
+    expect.objectContaining({ workflow: all["investigation"]?.id, version: pinned("investigation")?.version }),
   ]);
 
   // GitLab only conditions on the source SHA. All reviewed pairs stay open.
