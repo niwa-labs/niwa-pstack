@@ -48,6 +48,7 @@ export default workflow(
       "session.start.*",
       "session.start",
       "pstack.author.start",
+      "box.net@{repo.host}",
       "session.ask",
       "request.ask",
       "workflow.list",

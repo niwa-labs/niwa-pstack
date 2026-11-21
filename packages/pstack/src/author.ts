@@ -1,8 +1,6 @@
 /**
- * The author's box. The author is the one role that writes code, so its sessions are started only in a box that
- * writes in one of niwa's worktrees and nowhere else, and reaches only the forges pstack serves, to publish the
- * branch. The plugin holds that right, not the run: a script declares only the actions it calls, so a run cannot
- * hold the launch rules of a box; it calls `pstack.author.start`, which checks the place and starts the session.
+ * The author's box keeps its project writes in a worktree of niwa. The plugin checks the place and starts the
+ * session with the forge hosts its caller's grant covers.
  */
 
 import { existsSync, realpathSync } from "node:fs";
@@ -44,11 +42,16 @@ export function worktreePlace(who: string, place: string, worktrees: string): st
 }
 
 /**
- * The launch rules of the author's session in `place`: write there, and reach the forges. Refused when the role
- * carries no box, or the place is not a worktree under `worktrees`.
+ * The launch of the author's session: its project is the worktree and its box also reaches the given forges.
+ * Refused when the role carries no box or the place is outside `worktrees`.
  */
-export function authorLaunch(author: Roles["author"], place: string, worktrees: string, forges: readonly string[]): { place: string; visible: string[] } {
+export function authorLaunch(
+  author: Roles["author"],
+  place: string,
+  worktrees: string,
+  forges: readonly string[],
+): { place: string; box: { allow: Array<"project" | { net: string }> } } {
   if ((author as { box?: unknown }).box !== true) throw new AuthorRefusal("no-box", "the author role carries no box, and an author writes only in a box");
   const real = worktreePlace("the author", place, worktrees);
-  return { place: real, visible: [`write:${real}/*`, ...forges.map((host) => `net:${host}`)] };
+  return { place: real, box: { allow: ["project", ...forges.map((net) => ({ net }))] } };
 }

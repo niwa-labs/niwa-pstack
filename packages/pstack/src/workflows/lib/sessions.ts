@@ -22,7 +22,7 @@ export function addressOf(ref: string): SessionAddress {
   return { kind: "session", harness: ref.slice(0, at), id: ref.slice(at + 1) };
 }
 
-/** Start a session of a seat in a directory, seeing what `visible` names: its write and network rules make its box. */
+/** Start a session of a seat in a directory, with the niwa actions that `visible` names. */
 export async function startSession(key: string, seat: Seat, opts: { cwd: string; visible: string[] }): Promise<Started> {
   const started = (await api().call(
     "session.start",

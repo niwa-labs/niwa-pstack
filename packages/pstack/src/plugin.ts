@@ -3,7 +3,7 @@
  * tells its scripts the roles the owner gave it, and starts the author's sessions in their box.
  */
 
-import { action } from "@niwa-labs/core";
+import { action, coveringRule } from "@niwa-labs/core";
 import type { ActionRef } from "@niwa-labs/core";
 import { AGENT, BUILTIN_WORKFLOW, plugin } from "@niwa-labs/plugin";
 import type { Plugin } from "@niwa-labs/plugin";
@@ -21,7 +21,7 @@ import type { RolesInput } from "./roles.ts";
 export interface PstackOptions {
   /** The seats of the lead, the author, the reviewer, the verifier and the judge. */
   readonly roles: RolesInput;
-  /** The hosts of the forges an author publishes its branch to: the only network its box reaches. */
+  /** The forge hosts an author's box can add when the caller's grant allows them. */
   readonly forges?: readonly string[];
   /** Benny, who triages issue reports and reproduces and fixes confirmed bugs: off unless given. */
   readonly benny?: BennyOptions;
@@ -118,15 +118,18 @@ export function pstackPlugin(options: PstackOptions): Plugin {
         effect: "write",
         world: "local",
         async run(input, ctx) {
-          const launch = authorLaunch(roles.author, input.place, worktreesOf(api.home()), forges);
+          const rights = api.rights(ctx.caller);
+          const reachable = rights === "unlimited" ? forges : forges.filter((host) => coveringRule(rights, `box.net@${host}`) !== undefined);
+          const launch = authorLaunch(roles.author, input.place, worktreesOf(api.home()), reachable);
+          const principal = ctx.caller.kind === "client" ? ctx.caller.principal : undefined;
           const started = await ctx.step(sessionStart, {
             harness: roles.author.harness,
             prompt: "",
             cwd: launch.place,
-            visible: { actions: launch.visible },
+            box: launch.box,
             ...(roles.author.model === undefined ? {} : { model: roles.author.model }),
             ...(roles.author.effort === undefined ? {} : { effort: roles.author.effort }),
-          });
+          }, principal === undefined ? undefined : { as: principal });
           const at = started.ref.indexOf(" ");
           return { ref: started.ref, address: { kind: "session" as const, harness: started.ref.slice(0, at), id: started.ref.slice(at + 1) } };
         },

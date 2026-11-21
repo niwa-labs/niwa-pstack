@@ -56,6 +56,7 @@ export default workflow(
       "session.start",
       "session.ask",
       "pstack.author.start",
+      "box.net@{data.repo.host}",
       "git.worktree.create",
       "proc.run@{data.worktrees}/*",
       "forge.pr.ensure@{data.repo.host}/{data.repo.path}/pr/*",

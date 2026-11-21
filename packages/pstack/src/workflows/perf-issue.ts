@@ -33,6 +33,7 @@ export default workflow(
       "session.start",
       "session.ask",
       "pstack.author.start",
+      "box.net@{repo.host}",
       "git.worktree.create",
       "git.worktree.get",
       "git.worktree.remove",

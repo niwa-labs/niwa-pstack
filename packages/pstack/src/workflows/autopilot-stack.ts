@@ -47,6 +47,7 @@ export default workflow(
       "pstack.roles",
       "session.start",
       "pstack.author.start",
+      "box.net@{repo.host}",
       "session.ask",
       "git.worktree.create",
       "proc.run@{worktrees}/*",

@@ -9,11 +9,13 @@ import { join } from "node:path";
 import { z } from "zod";
 
 import { action, actionRef, grant, principalOf } from "@niwa-labs/core";
+import type { Caller } from "@niwa-labs/core";
 import { evidence } from "@niwa-labs/evidence";
 import { forge, secret } from "@niwa-labs/forge";
 import { plan } from "@niwa-labs/plan";
 import { AGENT } from "@niwa-labs/plugin";
 import type { AgentOffer, CallerBinding, Plugin } from "@niwa-labs/plugin";
+import { sessionStart } from "@niwa-labs/sessions/records";
 import { connect, connectAsOwner, createNiwa, eventually, git, plugin, requests, stubAction, tempDir, timers, workflow } from "@niwa-labs/testing";
 import type { Host } from "@niwa-labs/testing";
 
@@ -81,7 +83,13 @@ const stepOf = (prompt: string): string => /\[pstack:([^\]]+)\]/.exec(prompt)?.[
 /** The harnesses of the tests, behind `agent()` and behind `session.start` and `session.ask`. */
 class Harnesses {
   readonly calls: HarnessCall[] = [];
-  readonly sessions = new Map<string, { harness: string; cwd?: string; visible?: string[] }>();
+  readonly sessions = new Map<string, {
+    harness: string;
+    cwd?: string;
+    visible?: string[];
+    box: z.output<typeof sessionStart.input>["box"];
+    caller: Caller;
+  }>();
   answers: Answers = {};
 
   answer(call: HarnessCall): unknown | Promise<unknown> {
@@ -163,16 +171,24 @@ function fakeSessions(home: string, harnesses: Harnesses): Binding {
   let made = 0;
   const made_ = plugin("sessions", (api) => {
     api.action(
-      stubAction("session.start", {
-        home,
-        input: z.looseObject({ harness: z.string(), prompt: z.any(), cwd: z.string().optional(), visible: z.any().optional() }),
+      action("session.start", {
+        description: "Start a fake session.",
+        input: sessionStart.input,
         output: z.any(),
         recovery: "repeat",
-        result: (input) => {
+        effect: "write",
+        world: "local",
+        run: (input, { caller }) => {
           made += 1;
           const native = `native-${String(made)}`;
-          const visible = Array.isArray(input.visible) ? (input.visible as string[]) : (input.visible as { actions?: string[] } | undefined)?.actions;
-          harnesses.sessions.set(`${input.harness} ${native}`, { harness: input.harness, ...(input.cwd === undefined ? {} : { cwd: input.cwd }), ...(visible === undefined ? {} : { visible }) });
+          const visible = input.visible?.actions;
+          harnesses.sessions.set(`${input.harness} ${native}`, {
+            harness: input.harness,
+            ...(input.cwd === undefined ? {} : { cwd: input.cwd }),
+            ...(visible === undefined ? {} : { visible }),
+            box: input.box,
+            caller,
+          });
           return { session: `s-${String(made).padStart(6, "0")}`, ref: `${input.harness} ${native}`, operation: `op-${String(made)}` };
         },
       }),
@@ -290,6 +306,18 @@ export async function pstackHost(options: PstackHostOptions = {}): Promise<Pstac
     timers([]),
     git({ cleanup: false }),
     fakeProc(),
+    plugin("box", (api) => {
+      api.action(action("box.net", {
+        description: "A rule allowing a box to reach a host.",
+        input: z.strictObject({ host: z.string().min(1) }),
+        output: z.strictObject({ held: z.literal(true) }),
+        recovery: "repeat",
+        effect: "read",
+        world: "local",
+        target: (input) => input.host,
+        run: () => ({ held: true as const }),
+      }));
+    }),
     sessions,
     plugin("fake-agents", (api) => {
       for (const one of Object.values(agents)) api.action(one);

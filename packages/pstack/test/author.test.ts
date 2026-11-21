@@ -31,7 +31,11 @@ const code = (fn: () => unknown): string | undefined => {
 
 test("the author writes in its worktree and reaches only the forges", async () => {
   const { worktrees, wt } = await place();
-  expect(authorLaunch(author, wt, worktrees, ["gitlab.example.com"])).toEqual({ place: wt, visible: [`write:${wt}/*`, "net:gitlab.example.com"] });
+  expect(authorLaunch(author, wt, worktrees, ["gitlab.example.com"])).toEqual({
+    place: wt,
+    box: { allow: ["project", { net: "gitlab.example.com" }] },
+  });
+  expect(authorLaunch(author, wt, worktrees, [])).toEqual({ place: wt, box: { allow: ["project"] } });
 });
 
 test("a place that is not one of niwa's worktrees is refused", async () => {

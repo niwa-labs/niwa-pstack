@@ -19,8 +19,8 @@ export const SessionAddress = z.strictObject({ kind: z.literal("session"), harne
 
 export const pstackAuthorStart = actionRef("pstack.author.start", {
   description:
-    "Start a session of the author role in a box: it may write only in `place`, one of niwa's worktrees, and reach only the " +
-    "forges pstack was given, to publish its branch. A place that is not a worktree of this host is refused before anything " +
+    "Start a session of the author role in a box with `place`, one of niwa's worktrees, as its writable project. To publish " +
+    "its branch it can also reach configured forges covered by the caller's grant. A place outside the host's worktrees is refused before anything " +
     "starts. Answers the session's reference and the address its work is known by.",
   input: z.strictObject({ place: z.string().min(1) }),
   output: z.strictObject({ ref: z.string().min(1), address: SessionAddress }),
