@@ -65,6 +65,15 @@ modules before it and the workflow module after it. `bind` is the binding of the
 | worktree-cleanup | On a merge on the forge, removes the clean worktrees the merged head was built in |
 | upstream-sync | Not a playbook: carries the map of the upstream snapshot to a new snapshot, below |
 
+The playbooks are upstream's text with niwa's wording where upstream names something a session does not have: Cursor's
+skills and their principles, model slugs, `/loop`, `gh` and `origin`, `agent-transcripts/`. A helper is started with
+`session.start` on a harness instance from `harness.list`, a pull request is read and written through the forge module,
+work is woken by workflows and timers, and the history of a session is read through `session.read`. Every such change
+is an `adapted` entry of the map, or a `dropped` one with its reason, and `check` fails on any difference between a
+text and upstream that the map does not say. Every session also gets the worker rules, which carry the goal, candor and
+reply rules of upstream's operator skill. Benny's draft pull request is the one stated exception to the rule that a pull
+request is opened ready.
+
 A lane builds in a worktree off trunk with a boxed author. It opens the pull request only for the commit the author
 made; a head on the forge that the author did not answer is a push the lane did not make. Verifiers that did not write
 the code attest the `gates` and `live` verdicts on that head.
