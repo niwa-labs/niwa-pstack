@@ -56,7 +56,7 @@ export async function roles(): Promise<Roles> {
 }
 
 /** The options of an `agent()` call on a seat. */
-export function seatOptions(seat: Seat): AgentCallOptions {
+export function seatOptions(seat: Seat): Pick<AgentCallOptions, "harness" | "model" | "effort"> {
   return {
     harness: seat.harness,
     ...(seat.model === undefined ? {} : { model: seat.model }),
