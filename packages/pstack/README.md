@@ -148,6 +148,8 @@ its `source`. The control has no default for any project; the others have none e
   port and says to install its provider before pstack.
 - The triage session is shown `find`, `create` and `comment`; the reproduction session is shown the control actions.
   The channel is never shown to a session: the workflow is the only poster.
+- Install the providers only on a host that enables `benny`: without it pstack registers refusing stand-ins under the
+  same action names (the suite's grant has to name them), and a provider would clash with them.
 
 A minimal tracker provider:
 
