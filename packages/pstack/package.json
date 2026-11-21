@@ -2,6 +2,9 @@
   "name": "@niwa-labs/pstack",
   "version": "0.0.0",
   "type": "module",
+  "scripts": {
+    "refresh-upstream": "bun scripts/refresh-upstream.ts"
+  },
   "exports": {
     ".": "./src/index.ts"
   },
