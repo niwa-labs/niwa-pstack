@@ -50,9 +50,9 @@ export default workflow(
     const log = await gitOut("log", wt.path, ["log", "--oneline", `${base}..HEAD`]);
     const stat = await gitOut("stat", wt.path, ["diff", "--stat", `${base}...HEAD`]);
     await removeWorktree(wt, true);
-    const got = await api().agent(
-      brief(stepTag("opening-a-pr", "write"), text, task, [`The branch ${branch} against ${base}:`, log, stat, "Answer the title as type(scope): subject, and the sections of the body."]),
+    const got = await api().ask(
       { ...seatOptions(seats.lead), mode: "ask", cwd: repo.local, schema: written, label: "write" },
+      brief(stepTag("opening-a-pr", "write"), text, task, [`The branch ${branch} against ${base}:`, log, stat, "Answer the title as type(scope): subject, and the sections of the body."]),
     );
     phase("Open");
     const body = bodyOf(got.sections);

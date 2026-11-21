@@ -53,9 +53,9 @@ export default workflow(
     uses: [
       "pstack.roles",
       "session.start.*",
-      "session.start",
       "session.ask",
-      "pstack.author.start",
+      "session.end",
+      "pstack.author.options",
       "box.net@{data.repo.host}",
       "git.worktree.create",
       "proc.run@{data.worktrees}/*",
@@ -77,7 +77,8 @@ export default workflow(
   },
   async ({ data }: { data: Triaged }) => {
     const seats = await roles();
-    const repro = await api().agent(
+    const repro = await api().ask(
+      { ...seatOptions(seats.lead), mode: "ask", cwd: data.repo.local, schema: reproduced, label: "reproduce", visible: CONTROL },
       [
         stepTag("benny-reproduce", "reproduce"),
         "",
@@ -92,7 +93,6 @@ export default workflow(
         data.report,
         "</report>",
       ].join("\n"),
-      { ...seatOptions(seats.lead), mode: "ask", cwd: data.repo.local, schema: reproduced, label: "reproduce", visible: CONTROL },
     );
     // The coordinator is the only one who tells the owner: one concise message, in the report's thread when it has one.
     const notify = async (key: string, text: string): Promise<void> => {

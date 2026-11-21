@@ -1,18 +1,17 @@
 /**
  * The pstack plugin: it offers the entry, the playbooks, the suite and the upstream sync to the workflow module,
- * tells its scripts the roles the owner gave it, and starts the author's sessions in their box.
+ * tells its scripts the roles the owner gave it, and checks the author seat and box settings.
  */
 
 import { action, coveringRule } from "@niwa-labs/core";
 import type { ActionRef } from "@niwa-labs/core";
 import { AGENT, BUILTIN_WORKFLOW, plugin } from "@niwa-labs/plugin";
 import type { Plugin } from "@niwa-labs/plugin";
-import { sessionStart } from "@niwa-labs/sessions/records";
 
 import { authorLaunch, worktreesOf } from "./author.ts";
 import { UNGATED, gatedOf, scriptOf } from "./catalog.ts";
 import { BENNY_PORTS, PORT_ACTIONS } from "./ports.ts";
-import { BennyReported, bennyReport, pstackAuthorStart, pstackRoles } from "./records.ts";
+import { BennyReported, bennyReport, pstackAuthorOptions, pstackRoles } from "./records.ts";
 import { Roles } from "./roles.ts";
 import { upstreamActions } from "./upstream-actions.ts";
 import type { RolesInput } from "./roles.ts";
@@ -112,26 +111,22 @@ export function pstackPlugin(options: PstackOptions): Plugin {
       );
     }
     api.action(
-      action(pstackAuthorStart, {
-        // A session was started, or may have been: it is not started again.
-        recovery: "do-not-repeat",
-        effect: "write",
+      action(pstackAuthorOptions, {
+        recovery: "repeat",
+        effect: "read",
         world: "local",
-        async run(input, ctx) {
+        run(input, ctx) {
           const rights = api.rights(ctx.caller);
           const reachable = rights === "unlimited" ? forges : forges.filter((host) => coveringRule(rights, `box.net@${host}`) !== undefined);
-          const launch = authorLaunch(roles.author, input.place, worktreesOf(api.home()), reachable);
-          const principal = ctx.caller.kind === "client" ? ctx.caller.principal : undefined;
-          const started = await ctx.step(sessionStart, {
-            harness: roles.author.harness,
-            prompt: "",
+          const { author } = roles;
+          const launch = authorLaunch(author, input.place, worktreesOf(api.home()), reachable);
+          return {
+            harness: author.harness,
             cwd: launch.place,
             box: launch.box,
-            ...(roles.author.model === undefined ? {} : { model: roles.author.model }),
-            ...(roles.author.effort === undefined ? {} : { effort: roles.author.effort }),
-          }, principal === undefined ? undefined : { as: principal });
-          const at = started.ref.indexOf(" ");
-          return { ref: started.ref, address: { kind: "session" as const, harness: started.ref.slice(0, at), id: started.ref.slice(at + 1) } };
+            ...(author.model === undefined ? {} : { model: author.model }),
+            ...(author.effort === undefined ? {} : { effort: author.effort }),
+          };
         },
       }),
     );

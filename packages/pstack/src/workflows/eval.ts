@@ -44,16 +44,16 @@ export default workflow(
   async ({ task, repo, variants }) => {
     const seats = await roles();
     phase("Frame");
-    const frame = await api().agent(
-      brief(stepTag("eval", "frame"), text, task, ["Name what counts as success, a rubric of three to six criteria for the judge only, and the organic prompts the candidates get, as cases."]),
+    const frame = await api().ask(
       { ...seatOptions(seats.lead), mode: "ask", cwd: repo.local, schema: framed, label: "frame" },
+      brief(stepTag("eval", "frame"), text, task, ["Name what counts as success, a rubric of three to six criteria for the judge only, and the organic prompts the candidates get, as cases."]),
     );
     phase("Run");
     const judge = seats.judge ?? seats.reviewer;
     const result = await evalSuite("suite", {
       cases: frame.cases,
       variants,
-      run: async (harness, one) => (await api().agent(one.prompt, { harness, mode: "ask", cwd: repo.local })).answer,
+      run: async (harness, one) => (await api().ask({ harness, mode: "ask", cwd: repo.local }, one.prompt)).answer,
       rubric: frame.rubric,
       graders: [{ harness: judge.harness, vendor: judge.vendor ?? judge.harness }],
       vendorOf: (variant) => variants[variant] ?? variant,

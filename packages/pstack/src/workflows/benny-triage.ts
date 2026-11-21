@@ -60,7 +60,8 @@ export default workflow(
   },
   async ({ data }: { data: Reported }) => {
     const seats = await roles();
-    const got = await api().agent(
+    const got = await api().ask(
+      { ...seatOptions(seats.lead), mode: "ask", cwd: data.repo.local, schema: verdict, label: "triage", visible: TRACKER },
       [
         stepTag("benny-triage", "triage"),
         "",
@@ -77,7 +78,6 @@ export default workflow(
         data.report,
         "</report>",
       ].join("\n"),
-      { ...seatOptions(seats.lead), mode: "ask", cwd: data.repo.local, schema: verdict, label: "triage", visible: TRACKER },
     );
     await emit(Triaged, { report: data.report, ...got, ...(data.source === undefined ? {} : { source: data.source }), repo: data.repo, worktrees: data.worktrees, base: data.base }, { label: "triaged" });
     // The coordinator is the only poster: one verdict, in the thread the report came in on, when the channel gave its address.

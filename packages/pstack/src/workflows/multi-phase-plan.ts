@@ -46,12 +46,12 @@ export default workflow(
   async ({ task, repo, plan, ask }) => {
     const seats = await roles();
     phase("Plan");
-    const wrote = await api().agent(
+    const wrote = await api().ask(
+      { ...seatOptions(seats.lead), mode: "ask", cwd: repo.local, schema: written, label: "plan" },
       brief(stepTag("multi-phase-plan", "plan"), text, task, [
         "Answer the plan as nodes, one per pull request in landing order: an id, the one change it builds with its visible result and verification, the ids it waits for, and the files it may touch.",
         "When the change is one or two files with an obvious approach, answer skip with why.",
       ]),
-      { ...seatOptions(seats.lead), mode: "ask", cwd: repo.local, schema: written, label: "plan" },
     );
     if (wrote.kind === "skip") return { status: "skipped" as const, why: wrote.why };
     const ids = new Set(wrote.nodes.map((one) => one.id));

@@ -1,7 +1,7 @@
 /**
  * The roles of pstack's scripts: who leads, who writes the code, who reviews and verifies it, who judges.
  *
- * A role is a seat: the harness its sessions run on, with the options of their `agent()` calls. The author is the
+ * A role is a seat: the harness its sessions run on, with the options of their workflow sessions. The author is the
  * one role that writes, and it writes only in a box: its sessions are started with the write rule of the worktree
  * they work in and nothing wider, so `box: true` is part of its definition and a definition without it is refused.
  * The other roles read and answer; a verifier also attests what it found, under its own name.

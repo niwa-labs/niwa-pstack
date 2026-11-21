@@ -16,7 +16,7 @@ export default workflow(
     description: "Find the cause of a symptom from the program running",
     input: playbookInput(),
     output: forensicsSchema(),
-    uses: ["pstack.roles", "session.start.*"],
+    uses: ["pstack.roles", "session.start.*", "harness.list", "session.start", "session.ask", "session.end"],
     phases: [{ title: "Observe", detail: "Hypotheses held against runtime evidence" }],
   },
   async ({ task, repo }) => {

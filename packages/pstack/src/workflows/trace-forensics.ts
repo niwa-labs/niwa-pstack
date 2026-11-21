@@ -17,7 +17,7 @@ export default workflow(
     description: "Read a trace for the cause of a symptom",
     input: playbookInput().extend({ trace: z.string().min(1).max(2000).describe("Where the trace is: a path in the clone, or how to get it") }),
     output: forensicsSchema(),
-    uses: ["pstack.roles", "session.start.*"],
+    uses: ["pstack.roles", "session.start.*", "harness.list", "session.start", "session.ask", "session.end"],
     phases: [{ title: "Read", detail: "Every hypothesis held against the trace" }],
   },
   async ({ task, repo, trace }) => {

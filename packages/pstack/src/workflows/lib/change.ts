@@ -15,13 +15,13 @@ import type { PlaybookText } from "./texts.ts";
 
 /** Ask the lead, read-only in the local clone, to frame the work before anything is built. */
 export async function frame<S extends Z.ZodType>(playbook: PlaybookText, opts: { task: string; repo: Repo; roles: Roles; schema: S; ask: string[] }): Promise<Z.output<S>> {
-  return await api().agent(brief(stepTag(playbook.name, "frame"), playbook, opts.task, ["Work read-only: do not change anything.", ...opts.ask]), {
+  return await api().ask({
     ...seatOptions(opts.roles.lead),
     mode: "ask",
     cwd: opts.repo.local,
     schema: opts.schema,
     label: "frame",
-  });
+  }, brief(stepTag(playbook.name, "frame"), playbook, opts.task, ["Work read-only: do not change anything.", ...opts.ask]));
 }
 
 /** A change carried to a pull request, as the change playbooks answer it. */

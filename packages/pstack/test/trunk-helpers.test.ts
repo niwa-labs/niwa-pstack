@@ -12,14 +12,15 @@ import { commitFile, gitIn } from "./support.ts";
 
 const globals = globalThis as Record<string, unknown>;
 afterEach(() => {
-  for (const name of ["call", "agent"]) delete globals[name];
+  for (const name of ["call", "ask", "session"]) delete globals[name];
 });
 
 const repo = { host: "gitlab.example.com", path: "acme/billing" };
 
 /** Script globals over a forge that answers these pull requests, and a `proc.run` that runs for real. */
 function scriptWith(prs: Record<number, { state?: string; branch: string; base?: string; head: string }>): void {
-  globals.agent = async () => ({});
+  globals.ask = async () => ({});
+  globals.session = async () => ({});
   globals.call = async (name: string, input: any) => {
     if (name === "proc.run") {
       const ran = Bun.spawnSync(input.cmd, { cwd: input.cwd, stdout: "pipe", stderr: "pipe" });

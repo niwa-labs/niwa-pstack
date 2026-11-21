@@ -6,9 +6,7 @@ import type { ScriptApi } from "@niwa-labs/script";
 
 import { gitOut } from "./lib/git.ts";
 import { playbookInput } from "./lib/inputs.ts";
-import { api, stepTag } from "./lib/script.ts";
-import type { SessionAddress } from "./lib/script.ts";
-import { askSession } from "./lib/sessions.ts";
+import { api, authorOptions, stepTag } from "./lib/script.ts";
 import { brief } from "./lib/texts.ts";
 import text from "./texts/pause-safely.json";
 
@@ -31,21 +29,20 @@ export default workflow(
     description: "Stop cleanly with a checkpoint to resume from",
     input: playbookInput().extend({ worktree: z.string().min(1).describe("The niwa worktree the work is in") }),
     output: z.strictObject({ status: z.literal("paused"), head: z.string(), clean: z.boolean(), note }),
-    uses: ["pstack.author.start", "session.ask", "proc.run@{worktrees}/*"],
+    uses: ["session.start.*", "pstack.author.options", "session.ask", "session.end", "proc.run@{worktrees}/*"],
     phases: [{ title: "Checkpoint", detail: "A wip commit and the resume note" }],
   },
   async ({ task, worktree }) => {
     phase("Checkpoint");
-    const author = (await api().call("pstack.author.start", { place: worktree }, { label: "author" })) as { ref: string; address: SessionAddress };
-    const written = await askSession(
-      "checkpoint",
-      author.ref,
+    const author = await api().session({ ...await authorOptions("author", worktree), label: "author" });
+    const written = await author.ask(
       brief(stepTag("pause-safely", "checkpoint"), text, task, [
         `Stop at a safe boundary in ${worktree}. Commit what is uncommitted as one commit whose message starts with "wip:", and push nothing new.`,
         "Answer the resume note.",
       ]),
-      note,
+      { schema: note, label: "checkpoint" },
     );
+    await author.end();
     const head = await gitOut("head", worktree, ["rev-parse", "HEAD"]);
     const status = await gitOut("status", worktree, ["status", "--porcelain"]);
     return { status: "paused" as const, head, clean: status === "", note: written };

@@ -6,9 +6,7 @@ import { makeWorktree } from "@niwa-labs/flow-code";
 import type { ScriptApi } from "@niwa-labs/script";
 
 import { playbookInput } from "./lib/inputs.ts";
-import { api, roles, seatOptions, stepTag } from "./lib/script.ts";
-import type { SessionAddress } from "./lib/script.ts";
-import { askSession } from "./lib/sessions.ts";
+import { api, authorOptions, roles, seatOptions, stepTag } from "./lib/script.ts";
 import { brief } from "./lib/texts.ts";
 import text from "./texts/prototype.json";
 
@@ -40,7 +38,7 @@ export default workflow(
       }),
       z.strictObject({ status: z.literal("no-decision"), why: z.string() }),
     ]),
-    uses: ["pstack.roles", "session.start.*", "session.ask", "pstack.author.start", "git.worktree.create"],
+    uses: ["pstack.roles", "session.start.*", "session.ask", "session.end", "pstack.author.options", "git.worktree.create"],
     phases: [
       { title: "Scope", detail: "The decision and the variants" },
       { title: "Build", detail: "Each variant in a scratch worktree, observed" },
@@ -50,29 +48,28 @@ export default workflow(
   async ({ task, repo, base }) => {
     const seats = await roles();
     phase("Scope");
-    const scope = await api().agent(
-      brief(stepTag("prototype", "scope"), text, task, ["Name the decision the prototype exists to make and two to five variants. No decision: answer none and route to Feature."]),
+    const scope = await api().ask(
       { ...seatOptions(seats.lead), mode: "ask", cwd: repo.local, schema: scoped, label: "scope" },
+      brief(stepTag("prototype", "scope"), text, task, ["Name the decision the prototype exists to make and two to five variants. No decision: answer none and route to Feature."]),
     );
     if (scope.kind === "none") return { status: "no-decision" as const, why: scope.why };
     phase("Build");
     const built: Array<{ name: string; path: string; observed: string }> = [];
     for (const variant of scope.variants) {
       const wt = await makeWorktree({ repo: repo.local, base, description: `Prototype ${variant.name}: ${scope.decision}`.slice(0, 120) });
-      const author = (await api().call("pstack.author.start", { place: wt.path }, { label: `author-${variant.name}` })) as { ref: string; address: SessionAddress };
-      const seen = await askSession(
-        `build-${variant.name}`,
-        author.ref,
+      const author = await api().session({ ...await authorOptions(`author-${variant.name}`, wt.path), label: `author-${variant.name}` });
+      const seen = await author.ask(
         brief(stepTag("prototype", "build"), text, task, [`The decision: ${scope.decision}`, `Build the variant ${variant.name} as a throwaway in ${wt.path}: ${variant.idea}`, "Observe the thing being decided and answer what you saw."]),
-        z.strictObject({ observed: z.string().min(1).max(4000) }),
+        { schema: z.strictObject({ observed: z.string().min(1).max(4000) }), label: `build-${variant.name}` },
       );
+      await author.end();
       built.push({ name: variant.name, path: wt.path, observed: seen.observed });
     }
     phase("Recommend");
     const names = scope.variants.map((one) => one.name) as [string, ...string[]];
-    const picked = await api().agent(
-      brief(stepTag("prototype", "recommend"), text, task, [`The decision: ${scope.decision}`, ...built.map((one) => `- ${one.name}: ${one.observed}`), "Recommend one variant and say why."]),
+    const picked = await api().ask(
       { ...seatOptions(seats.lead), mode: "ask", cwd: repo.local, schema: z.strictObject({ recommend: z.enum(names), why: z.string().min(1).max(4000) }), label: "recommend" },
+      brief(stepTag("prototype", "recommend"), text, task, [`The decision: ${scope.decision}`, ...built.map((one) => `- ${one.name}: ${one.observed}`), "Recommend one variant and say why."]),
     );
     return { status: "decided" as const, decision: scope.decision, variants: built, recommend: picked.recommend, why: picked.why };
   },

@@ -29,13 +29,13 @@ export default workflow(
   async ({ task, repo }) => {
     const seats = await roles();
     phase("Trace");
-    const found = await api().agent(brief(stepTag("investigation", "trace"), text, task, ["Work read-only. Cite each claim with a file and a line."]), {
+    const found = await api().ask({
       ...seatOptions(seats.lead),
       mode: "ask",
       cwd: repo.local,
       schema: answer,
       label: "trace",
-    });
+    }, brief(stepTag("investigation", "trace"), text, task, ["Work read-only. Cite each claim with a file and a line."]));
     return { status: "answered" as const, answer: found };
   },
 );

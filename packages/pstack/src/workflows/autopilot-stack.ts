@@ -45,10 +45,11 @@ export default workflow(
     ]),
     uses: [
       "pstack.roles",
-      "session.start",
-      "pstack.author.start",
+      "session.start.*",
+      "pstack.author.options",
       "box.net@{repo.host}",
       "session.ask",
+      "session.end",
       "git.worktree.create",
       "proc.run@{worktrees}/*",
       "forge.pr.ensure@{repo.host}/{repo.path}/pr/*",

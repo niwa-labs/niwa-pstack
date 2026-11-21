@@ -37,7 +37,7 @@ export {
 export type { PortOffer } from "./ports.ts";
 export { pstackPlugin } from "./plugin.ts";
 export type { BennyOptions, PstackOptions } from "./plugin.ts";
-export { BennyReported, SessionAddress, bennyReport, pstackAuthorStart, pstackRoles } from "./records.ts";
+export { BennyReported, SessionAddress, bennyReport, pstackAuthorOptions, pstackRoles } from "./records.ts";
 export { GO, VERDICTS, decide, goCovers, goDigest, goSubject, mayGiveGo, mergeRequirements } from "./policy.ts";
 export type { Found, MergeSubject, PlanRevision, Required } from "./policy.ts";
 export { isLockfile, isManifest, trunkKind } from "./trunk.ts";

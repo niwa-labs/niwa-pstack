@@ -21,7 +21,7 @@ its reason) and nothing else.
 
 ### worker:02
 
-- If you start an agent, open its kickoff with the goal, then give it these rules in full: it does not read this brief, and no file holds them for it to read.
+- If you start a helper session, give it the goal and these rules in full. Its conversation starts empty.
 
 
 ### bugbot-triage:02
@@ -50,7 +50,7 @@ No event gets a timer with a fixed interval sized
 
 ### autonomous-run:03.7
 
-Start each subagent with niwa's `session.start` on the harness instance from `harness.list` that fits the job, with an effort to match; where you may not start sessions, do the work yourself in small verified steps.
+When Niwa shows the session tools, use `harness.list` to choose an installation and `session.start` without a prompt. The helper joins this run and stays inside its launch limits. Ask a focused, read-only question with `session.ask`, using the returned session id and a schema for the finding. Use the same id for follow-ups and call `session.end` when finished. When the tools are absent, do the work yourself in small verified steps.
 
 ### autonomous-run:04.1
 
@@ -151,7 +151,7 @@ Reply with the forge module's `forge.comment.reply`, never with shell built from
 
 ### bug-fix:01.1
 
-Start each subagent with niwa's `session.start` on the harness instance of the author role, with an effort to fit the job; where you may not start sessions, do the work yourself in small verified steps.
+When Niwa shows the session tools, use `session.start` on the author seat's installation without a prompt. The helper joins this run and stays inside its launch limits. Ask a focused, read-only question with `session.ask`, using the returned session id and a schema for the finding. Use the same id for follow-ups and call `session.end` when finished. When the tools are absent, do the work yourself in small verified steps.
 
 ### bug-fix:03.1
 
@@ -187,7 +187,7 @@ on different harness instances (the variants under test)
 
 ### eval:12.3
 
-Start each subagent with niwa's `session.start` on the harness instance from `harness.list` that fits the job, with an effort to match; where you may not start sessions, do the work yourself in small verified steps.
+The workflow asks each candidate in its own session and gives it only the organic prompt. Keep the rubric with the judge and do not create extra sessions for the candidates.
 
 ### eval:12.5
 
@@ -215,7 +215,7 @@ chosen to model the domain
 
 ### feature:05.5
 
-Start each subagent with niwa's `session.start` on the harness instance of the author role, with an effort to fit the job; where you may not start sessions, do the work yourself in small verified steps.
+When Niwa shows the session tools, use `session.start` on the author seat's installation without a prompt. The helper joins this run and stays inside its launch limits. Ask a focused, read-only question with `session.ask`, using the returned session id and a schema for the finding. Use the same id for follow-ups and call `session.end` when finished. When the tools are absent, do the work yourself in small verified steps.
 
 ### feature:05.7
 
@@ -247,7 +247,7 @@ Perf issue playbook
 
 ### hillclimb:09.3
 
-Start each subagent with niwa's `session.start` on the harness instance of the author role, with an effort to fit the job; where you may not start sessions, do the work yourself in small verified steps.
+When Niwa shows the session tools, use `session.start` on the author seat's installation without a prompt. The helper joins this run and stays inside its launch limits. Ask a focused, read-only question with `session.ask`, using the returned session id and a schema for the finding. Use the same id for follow-ups and call `session.end` when finished. When the tools are absent, do the work yourself in small verified steps.
 
 ### hillclimb:09.5
 
@@ -323,7 +323,7 @@ If it crosses a function boundary, name the shape first: the data types, the mod
 
 ### perf-issue:05.5
 
-Start each subagent with niwa's `session.start` on the harness instance of the author role, with an effort to fit the job; where you may not start sessions, do the work yourself in small verified steps.
+When Niwa shows the session tools, use `session.start` on the author seat's installation without a prompt. The helper joins this run and stays inside its launch limits. Ask a focused, read-only question with `session.ask`, using the returned session id and a schema for the finding. Use the same id for follow-ups and call `session.end` when finished. When the tools are absent, do the work yourself in small verified steps.
 
 ### perf-issue:05.7
 
@@ -367,7 +367,7 @@ settle the shape before the move
 
 ### refactoring:07.5
 
-Start each subagent with niwa's `session.start` on the harness instance of the author role, with an effort to fit the job; where you may not start sessions, do the work yourself in small verified steps.
+When Niwa shows the session tools, use `session.start` on the author seat's installation without a prompt. The helper joins this run and stays inside its launch limits. Ask a focused, read-only question with `session.ask`, using the returned session id and a schema for the finding. Use the same id for follow-ups and call `session.end` when finished. When the tools are absent, do the work yourself in small verified steps.
 
 ### refactoring:08.3
 
@@ -387,7 +387,7 @@ by driving the running program yourself
 
 ### runtime-forensics:03.3
 
-Start each subagent with niwa's `session.start` on the harness instance from `harness.list` that fits the job, with an effort to match; where you may not start sessions, do the work yourself in small verified steps.
+When Niwa shows the session tools, use `harness.list` to choose an installation and `session.start` without a prompt. The helper joins this run and stays inside its launch limits. Ask a focused, read-only question with `session.ask`, using the returned session id and a schema for the finding. Use the same id for follow-ups and call `session.end` when finished. When the tools are absent, do the work yourself in small verified steps.
 
 ### session-pickup:02.1
 
@@ -399,7 +399,7 @@ A session niwa holds (`session.read`, found with `session.list` or `session.sear
 
 ### session-pickup:02.5
 
-Start each subagent with niwa's `session.start` on the harness instance from `harness.list` that fits the job, with an effort to match; where you may not start sessions, do the work yourself in small verified steps.
+When Niwa shows the session tools, use `harness.list` to choose an installation and `session.start` without a prompt. The helper joins this run and stays inside its launch limits. Ask a focused, read-only question with `session.ask`, using the returned session id and a schema for the finding. Use the same id for follow-ups and call `session.end` when finished. When the tools are absent, do the work yourself in small verified steps.
 
 ### trace-forensics:03.1
 
@@ -407,7 +407,7 @@ Start each subagent with niwa's `session.start` on the harness instance from `ha
 
 ### trace-forensics:03.3
 
-Start each subagent with niwa's `session.start` on the harness instance from `harness.list` that fits the job, with an effort to match; where you may not start sessions, do the work yourself in small verified steps.
+When Niwa shows the session tools, use `harness.list` to choose an installation and `session.start` without a prompt. The helper joins this run and stays inside its launch limits. Ask a focused, read-only question with `session.ask`, using the returned session id and a schema for the finding. Use the same id for follow-ups and call `session.end` when finished. When the tools are absent, do the work yourself in small verified steps.
 
 ### visual-parity:04.1
 

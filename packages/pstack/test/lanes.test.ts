@@ -9,6 +9,7 @@ import { connect } from "@niwa-labs/testing";
 
 import { UNGATED, gatedOf } from "../src/catalog.ts";
 import { goDigest, goSubject } from "../src/policy.ts";
+import { pstackAuthorOptions } from "../src/records.ts";
 import { FORGE_HOST, builtins, claimAsked, defaultAnswers, pstackHost, recordsOf, registeredAll } from "./support.ts";
 import type { Answers, PstackHost, PstackHostOptions } from "./support.ts";
 
@@ -57,18 +58,27 @@ test("the author is started boxed to its own worktree and the forge, and a place
   const authors = [...made.harnesses.sessions.values()].filter((one) => one.harness === "author");
   expect(authors.length).toBeGreaterThan(0);
   expect(authors.map((one) => one.box)).toContainEqual({ allow: ["project", { net: FORGE_HOST }] });
+  const tools = ["harness.list", "session.start@author", "session.ask", "session.end"];
   for (const one of authors) {
     expect(one.cwd?.startsWith(`${made.worktrees}/`)).toBe(true);
     expect(one.box).toMatchObject({ allow: expect.arrayContaining(["project"]) });
-    expect(one.visible).toBeUndefined();
+    expect(one.ended).toBe(true);
+    if (one.visible !== undefined) expect(one.visible).toEqual(tools);
     expect(one.caller).toMatchObject({ kind: "client", principal: { kind: "run" } });
   }
+  const attempts = made.harnesses.of("hillclimb:attempt");
+  expect(attempts).toHaveLength(2);
+  const ref = attempts[0]?.ref;
+  expect(ref).toBeDefined();
+  expect(attempts.map((call) => call.ref)).toEqual([ref, ref]);
+  expect(made.harnesses.lookup(ref ?? "")[1]).toMatchObject({ ended: true, visible: tools });
+
   const before = made.harnesses.sessions.size;
-  await expect(made.host.call("pstack.author.start" as never, { place: made.repo } as never)).rejects.toThrow("is not one of niwa's worktrees");
+  await expect(made.host.call(pstackAuthorOptions, { place: made.repo })).rejects.toThrow("is not one of niwa's worktrees");
   expect(made.harnesses.sessions.size).toBe(before);
 }, 240_000);
 
-test("an author started by a limited caller adds only the forge network its grant holds", async () => {
+test("checked author settings add only the forge network the caller can grant", async () => {
   const made = await pstackHost({ benny: false });
   hosts.push(made);
   const { path } = await made.host.call("git.worktree.create" as never, { repo: made.repo, description: "author grant" } as never) as { path: string };
@@ -76,11 +86,11 @@ test("an author started by a limited caller adds only the forge network its gran
     ["local", [], ["project"]],
     ["publish", [`box.net@${FORGE_HOST}`], ["project", { net: FORGE_HOST }]],
   ] as const) {
-    const token = made.host.issueToken(principalOf("client", label), { grant: grant(["pstack.author.start", ...rule]) });
+    const token = made.host.issueToken(principalOf("client", label), { grant: grant([pstackAuthorOptions.name, ...rule]) });
     const client = await connect({ home: made.home, id: label, token });
     try {
-      const { ref } = await client.call("pstack.author.start" as never, { place: path } as never) as { ref: string };
-      expect(made.harnesses.sessions.get(ref)?.box).toEqual({ allow: [...allow] });
+      expect(await client.call(pstackAuthorOptions, { place: path })).toEqual({ harness: "author", cwd: path, box: { allow: [...allow] } });
+      expect(made.harnesses.sessions.size).toBe(0);
     } finally {
       await client.close();
     }

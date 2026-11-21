@@ -17,13 +17,18 @@ export const pstackRoles = actionRef("pstack.roles", {
 /** A session's address, as evidence binds it when the session attests. */
 export const SessionAddress = z.strictObject({ kind: z.literal("session"), harness: z.string().min(1), id: z.string().min(1) });
 
-export const pstackAuthorStart = actionRef("pstack.author.start", {
+/** Checked author seat and box settings for a workflow session. */
+export const pstackAuthorOptions = actionRef("pstack.author.options", {
   description:
-    "Start a session of the author role in a box with `place`, one of niwa's worktrees, as its writable project. To publish " +
-    "its branch it can also reach configured forges covered by the caller's grant. A place outside the host's worktrees is refused before anything " +
-    "starts. Answers the session's reference and the address its work is known by.",
+    "Check the author's worktree and return its session settings, allowing network access to configured forges covered by the caller's grant.",
   input: z.strictObject({ place: z.string().min(1) }),
-  output: z.strictObject({ ref: z.string().min(1), address: SessionAddress }),
+  output: z.strictObject({
+    harness: z.string().min(1),
+    cwd: z.string().min(1),
+    model: z.string().optional(),
+    effort: z.string().optional(),
+    box: z.strictObject({ allow: z.array(z.union([z.literal("project"), z.strictObject({ net: z.string().min(1) })])) }),
+  }),
 });
 
 /** A repository, as Benny's records carry it: where the forge serves it, and the local clone. */

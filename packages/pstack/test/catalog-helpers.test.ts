@@ -7,7 +7,7 @@ import { isRefusal, tryVersion } from "../src/workflows/lib/catalog.ts";
 
 const globals = globalThis as Record<string, unknown>;
 afterEach(() => {
-  for (const name of ["call", "agent"]) delete globals[name];
+  for (const name of ["call", "ask", "session"]) delete globals[name];
 });
 
 /** An error of the name the script runtime gives it. */
@@ -15,7 +15,8 @@ const named = (name: string, message: string) => Object.assign(new Error(message
 
 function startsWith(fail: Error | undefined, answer: unknown = {}): string[] {
   const calls: string[] = [];
-  globals.agent = async () => ({});
+  globals.ask = async () => ({});
+  globals.session = async () => ({});
   globals.call = async (name: string) => {
     calls.push(name);
     if (fail !== undefined) throw fail;

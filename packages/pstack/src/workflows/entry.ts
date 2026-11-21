@@ -81,10 +81,12 @@ export default workflow(
       "forge.comment.read@{repo.host}/{repo.path}",
       "pstack.roles",
       "session.start.*",
+      "harness.list",
       "session.start",
-      "pstack.author.start",
+      "pstack.author.options",
       "box.net@{repo.host}",
       "session.ask",
+      "session.end",
       "request.ask",
       "workflow.list",
       "workflow.get",
@@ -104,7 +106,8 @@ export default workflow(
   async ({ request, repo, worktrees, base, pins }) => {
     const seats = await roles();
     phase("Route");
-    const picked = await api().agent(
+    const picked = await api().ask(
+      { ...seatOptions(seats.lead), mode: "ask", cwd: repo.local, schema: decision, label: "route" },
       [
         stepTag("entry", "route"),
         "",
@@ -118,7 +121,6 @@ export default workflow(
         "",
         `Request: ${request}`,
       ].join("\n"),
-      { ...seatOptions(seats.lead), mode: "ask", cwd: repo.local, schema: decision, label: "route" },
     );
     if (picked.kind === "finish") return { status: "finished" as const, summary: picked.summary };
     phase("Run");

@@ -9,9 +9,11 @@ of them before the host runs it.
 ```ts
 import { addressingOf, pstack } from "@niwa-labs/pstack";
 
-const base = defaultComposition({ home, harnesses, kinds, agents });
+const base = defaultComposition({ home, harnesses, agents });
+const beforeWorkflow = base.filter((part) => part.name !== "workflow");
+const workflow = base.filter((part) => part.name === "workflow");
 export default [
-  ...base,
+  ...beforeWorkflow,
   ...pstack({
     bind: addressingOf(base),
     forge: { servers: [{ host: "gitlab.example.com", url: "https://gitlab.example.com", token: secret("GITLAB_TOKEN") }] },
@@ -28,7 +30,7 @@ export default [
       ports: [acmeTracker(), acmeChat(), acmeControl()],
     },
   }),
-  workflow(),
+  ...workflow,
 ];
 ```
 
@@ -40,9 +42,9 @@ modules before it and the workflow module after it. `bind` is the binding of the
 ## Roles
 
 - `lead` frames, routes and judges, read-only.
-- `author` writes code. It carries `box: true`: pstack's plugin starts its sessions (`pstack.author.start`) with writes
-  limited to one of niwa's worktrees, by real path, and network limited to the forges' hosts. A place outside niwa's
-  worktrees is refused before a session exists.
+- `author` writes code. It carries `box: true`. The workflow checks the real worktree path before opening its author
+  session through the SDK. It grants that worktree's project writes and adds only the configured forge hosts covered by
+  the run's grant.
 - `reviewer` judges review threads.
 - `verifier` re-runs the gates and shows the behaviour live. It must run on another harness than the author, and it
   attests its verdicts under its own name.
@@ -71,9 +73,11 @@ modules before it and the workflow module after it. `bind` is the binding of the
 | upstream-sync | Not a playbook: carries the map of the upstream snapshot to a new snapshot, below; gated like the playbooks |
 
 The playbooks are upstream's text with niwa's wording where upstream names something a session does not have: Cursor's
-skills and their principles, model slugs, `/loop`, `gh` and `origin`, `agent-transcripts/`. A helper is started with
-`session.start` on a harness instance from `harness.list`, a pull request is read and written through the forge module,
-work is woken by workflows and timers, and the history of a session is read through `session.read`. Every such change
+skills and their principles, model slugs, `/loop`, `gh` and `origin`, `agent-transcripts/`. Scripts use `ask()` for
+a typed one-shot answer and `session()` for a conversation with durable turns. Where a playbook shows the session tools
+to a model, the model can open a helper with `session.start`, ask it with `session.ask` and close it with `session.end`.
+The helper belongs to the same run and inherits its launch limits. Pull requests go through the forge module, workflows
+and timers wake work, and `session.read` reads a session's history. Every such change
 is an `adapted` entry of the map, or a `dropped` one with its reason, and `check` fails on any difference between a
 text and upstream that the map does not say. Every session also gets the worker rules, which carry the goal, candor and
 reply rules of upstream's operator skill. Benny's draft pull request is the one stated exception to the rule that a pull

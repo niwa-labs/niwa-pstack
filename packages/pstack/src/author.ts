@@ -1,6 +1,6 @@
 /**
- * The author's box keeps its project writes in a worktree of niwa. The plugin checks the place and starts the
- * session with the forge hosts its caller's grant covers.
+ * The author's box keeps its project writes in a worktree of niwa. The plugin checks the place and chooses the
+ * forge hosts its caller's grant covers.
  */
 
 import { existsSync, realpathSync } from "node:fs";

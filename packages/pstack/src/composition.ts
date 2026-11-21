@@ -38,7 +38,7 @@ export interface PstackCompositionOptions extends Omit<PstackOptions, "forges"> 
 export const PSTACK_NEEDS = {
   /** The binding by which a session attests under one address: the one evidence is given. */
   addressing: "the caller binding of the sessions and agents modules",
-  /** The sessions module, before pstack: the author's boxed sessions are started through it. */
+  /** The sessions module, before pstack: the workflow SDK starts the boxed sessions through it. */
   sessions: "@niwa-labs/sessions",
   /** The git module, before pstack: the worktrees the lanes work in. */
   git: "@niwa-labs/git",

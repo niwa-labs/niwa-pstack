@@ -22,11 +22,11 @@
         "@niwa-labs/plan": "*",
         "@niwa-labs/plugin": "*",
         "@niwa-labs/script": "*",
-        "@niwa-labs/sessions": "*",
         "@niwa-labs/watch": "*",
         "zod": "^4.6.7",
       },
       "devDependencies": {
+        "@niwa-labs/sessions": "*",
         "@niwa-labs/testing": "*",
       },
     },

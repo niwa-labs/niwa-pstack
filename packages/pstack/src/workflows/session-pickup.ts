@@ -6,7 +6,7 @@ import type { ScriptApi } from "@niwa-labs/script";
 
 import { goSubject } from "../policy.ts";
 import { playbookInput } from "./lib/inputs.ts";
-import { api, roles, seatOptions, stepTag } from "./lib/script.ts";
+import { HELPER_ACTIONS, api, roles, seatOptions, stepTag } from "./lib/script.ts";
 import { brief } from "./lib/texts.ts";
 import text from "./texts/session-pickup.json";
 
@@ -26,7 +26,7 @@ export default workflow(
     description: "Pick up work from the trail niwa keeps of it",
     input: playbookInput().extend({ plan: z.string().min(1).max(200).optional().describe("The plan the work follows, when it has one") }),
     output: z.strictObject({ status: z.literal("picked-up"), plan: z.json().optional(), pickup }),
-    uses: ["pstack.roles", "session.start.*", "plan.get", "evidence.list"],
+    uses: ["pstack.roles", "session.start.*", "harness.list", "session.start", "session.ask", "session.end", "plan.get", "evidence.list"],
     phases: [
       { title: "Read", detail: "The plan and what was attested on it" },
       { title: "Resume", detail: "Where it stands and the first action" },
@@ -48,9 +48,9 @@ export default workflow(
     trail.push("What was attested:", ...recent.items.map((one) => `- ${one.subject}: ${JSON.stringify(one.claim)} by ${JSON.stringify(one.author)}`));
     phase("Resume");
     const seats = await roles();
-    const got = await api().agent(
+    const got = await api().ask(
+      { ...seatOptions(seats.lead), mode: "ask", cwd: repo.local, schema: pickup, label: "resume", visible: HELPER_ACTIONS },
       brief(stepTag("session-pickup", "resume"), text, task, ["The trail is authoritative: do not prove it again.", "", ...trail, "", "Answer where the work stands, what is verified, and the first action."]),
-      { ...seatOptions(seats.lead), mode: "ask", cwd: repo.local, schema: pickup, label: "resume" },
     );
     return { status: "picked-up" as const, ...(plan === undefined ? {} : { plan: plan as never }), pickup: got };
   },

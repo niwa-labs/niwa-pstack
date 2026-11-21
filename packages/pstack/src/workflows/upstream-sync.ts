@@ -15,9 +15,7 @@
 import { makeWorktree } from "@niwa-labs/flow-code";
 import type { ScriptApi } from "@niwa-labs/script";
 
-import { api, roles, seatOptions, stepTag } from "./lib/script.ts";
-import type { SessionAddress } from "./lib/script.ts";
-import { askSession } from "./lib/sessions.ts";
+import { api, authorOptions, roles, seatOptions, stepTag } from "./lib/script.ts";
 
 declare const workflow: ScriptApi["workflow"];
 declare const z: ScriptApi["z"];
@@ -73,8 +71,10 @@ export default workflow(
     }),
     uses: [
       "pstack.roles",
-      "pstack.author.start",
+      "session.start.*",
+      "pstack.author.options",
       "session.ask",
+      "session.end",
       "git.worktree.create",
       "pstack.upstream.refresh",
       "pstack.upstream.measure",
@@ -113,16 +113,14 @@ export default workflow(
     await commit("snapshot", `Take upstream pstack at ${taken.slice(0, 9)}`, [`${pkg}/upstream`]);
 
     phase("Carry");
-    const author = (await api().call("pstack.author.start", { place: wt.path }, { label: "author" })) as { ref: string; address: SessionAddress };
+    const author = await api().session({ ...await authorOptions("author", wt.path), label: "author" });
     const log: Array<{ round: number; before: string; summary: string }> = [];
     const asked: Array<{ question: string; why: string }> = [];
     let status: "synced" | "unfinished" | "stalled" = "unfinished";
     let summary = await measure("measure-0");
     const work = async (key: string, round: number, say: string[]): Promise<boolean> => {
       const before = await headOf(`${key}-before`);
-      const said = await askSession(
-        key,
-        author.ref,
+      const said = await author.ask(
         [
           stepTag("upstream-sync", "round"),
           "",
@@ -139,7 +137,7 @@ export default workflow(
           `The report now: ${JSON.stringify(summary)}`,
           "Answer what you did this round, the decisions left for the owner, and the ids to accept.",
         ].join("\n"),
-        answered,
+        { schema: answered, label: key },
       );
       for (const one of said.decisions) if (!asked.some((seen) => seen.question === one.question)) asked.push(one);
       log.push({ round, before, summary: said.summary });
@@ -167,6 +165,7 @@ export default workflow(
       await work("decided", log.length + 1, ["The owner answered what you left to them. Carry out each answer, and leave nothing of it undone:", ...decisions.map((one) => `- ${one.question}: ${one.answer}`)]);
       summary = await measure("measure-decided");
     }
+    await author.end();
     if (settled(summary, min)) status = "synced";
 
     phase("Record");

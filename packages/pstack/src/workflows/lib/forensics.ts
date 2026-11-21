@@ -4,7 +4,7 @@
  */
 
 import { zod } from "./inputs.ts";
-import { api, roles, seatOptions, stepTag } from "./script.ts";
+import { HELPER_ACTIONS, api, roles, seatOptions, stepTag } from "./script.ts";
 import type { Repo } from "./script.ts";
 import { brief } from "./texts.ts";
 import type { PlaybookText } from "./texts.ts";
@@ -23,13 +23,13 @@ export async function forensics(playbook: PlaybookText, opts: { task: string; re
   const z = zod();
   const seats = await roles();
   const answer = z.strictObject({ cause: z.string().max(2000).nullable(), hypotheses: forensicsSchema().shape.hypotheses });
-  const found = await api().agent(
+  const found = await api().ask(
+    { ...seatOptions(seats.lead), mode: "ask", cwd: opts.repo.local, schema: answer, label: "investigate", visible: HELPER_ACTIONS },
     brief(stepTag(playbook.name, "investigate"), playbook, opts.task, [
       "Work read-only. Form the candidate hypotheses and hold each against evidence; mark each confirmed, refuted or open with the evidence.",
       "Answer the cause only when one confirmed hypothesis is it.",
       ...opts.extra,
     ]),
-    { ...seatOptions(seats.lead), mode: "ask", cwd: opts.repo.local, schema: answer, label: "investigate" },
   );
   const confirmed = found.hypotheses.some((one) => one.status === "confirmed");
   const cause = confirmed ? found.cause : null;

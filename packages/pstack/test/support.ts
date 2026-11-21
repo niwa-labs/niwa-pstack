@@ -15,8 +15,8 @@ import { forge, secret } from "@niwa-labs/forge";
 import { plan } from "@niwa-labs/plan";
 import { AGENT } from "@niwa-labs/plugin";
 import type { AgentOffer, CallerBinding, Plugin } from "@niwa-labs/plugin";
-import { sessionStart } from "@niwa-labs/sessions/records";
-import { connect, connectAsOwner, createNiwa, eventually, git, plugin, requests, stubAction, tempDir, timers, workflow } from "@niwa-labs/testing";
+import { harnessList, sessionAsk, sessionEnd, sessionStart } from "@niwa-labs/sessions/records";
+import { connect, connectAsOwner, createNiwa, eventually, git, plugin, requests, tempDir, timers, workflow } from "@niwa-labs/testing";
 import type { Host } from "@niwa-labs/testing";
 
 import { FakeGitLab, sha } from "../node_modules/@niwa-labs/forge/test/fake-gitlab.ts";
@@ -70,7 +70,7 @@ export interface HarnessCall {
   prompt: string;
   cwd?: string;
   visible?: string[];
-  /** The session's reference, for a session started with `session.start`. */
+  /** The reference of the conversation answering this turn. */
   ref?: string;
 }
 
@@ -80,17 +80,35 @@ export type Answers = Record<string, (call: HarnessCall) => unknown>;
 /** The step a prompt's tag names. */
 const stepOf = (prompt: string): string => /\[pstack:([^\]]+)\]/.exec(prompt)?.[1] ?? "";
 
-/** The harnesses of the tests, behind `agent()` and behind `session.start` and `session.ask`. */
+/** Fake calls and sessions seen through the workflow SDK. */
 class Harnesses {
   readonly calls: HarnessCall[] = [];
   readonly sessions = new Map<string, {
+    id: string;
     harness: string;
+    ended: boolean;
     cwd?: string;
     visible?: string[];
     box: z.output<typeof sessionStart.input>["box"];
     caller: Caller;
   }>();
   answers: Answers = {};
+
+  open(harness: string, caller: Caller, options: { cwd?: string; visible?: string[]; box?: z.output<typeof sessionStart.input>["box"] }) {
+    const number = this.sessions.size + 1;
+    const id = `s-${String(number).padStart(6, "0")}`;
+    const ref = `${harness} native-${String(number)}`;
+    const { cwd, visible, box } = options;
+    this.sessions.set(ref, { id, harness, ended: false, ...(cwd === undefined ? {} : { cwd }), ...(visible === undefined ? {} : { visible }), box, caller });
+    return { session: id, ref, operation: `op-${String(number)}` };
+  }
+
+  lookup(id: string | { harness: string; native: string }) {
+    const key = typeof id === "string" ? id : `${id.harness} ${id.native}`;
+    const entry = [...this.sessions].find(([ref, session]) => ref === key || session.id === key);
+    if (entry === undefined) throw new Error(`no fake session ${id}`);
+    return entry;
+  }
 
   answer(call: HarnessCall): unknown | Promise<unknown> {
     this.calls.push(call);
@@ -167,9 +185,14 @@ function fakeProc(): Plugin {
  * module, it says which session a token's mark names, so a session that attests is bound to its address; the mark
  * of a fake session is its native id.
  */
-function fakeSessions(home: string, harnesses: Harnesses): Binding {
-  let made = 0;
+function fakeSessions(harnesses: Harnesses): Binding {
   const made_ = plugin("sessions", (api) => {
+    api.action(action(harnessList, {
+      recovery: "repeat",
+      effect: "read",
+      world: "niwa",
+      run: () => ({ items: [] }),
+    }));
     api.action(
       action("session.start", {
         description: "Start a fake session.",
@@ -179,34 +202,39 @@ function fakeSessions(home: string, harnesses: Harnesses): Binding {
         effect: "write",
         world: "local",
         run: (input, { caller }) => {
-          made += 1;
-          const native = `native-${String(made)}`;
+          const { cwd, box } = input;
           const visible = input.visible?.actions;
-          harnesses.sessions.set(`${input.harness} ${native}`, {
-            harness: input.harness,
-            ...(input.cwd === undefined ? {} : { cwd: input.cwd }),
+          return harnesses.open(input.harness, caller, {
+            ...(cwd === undefined ? {} : { cwd }),
             ...(visible === undefined ? {} : { visible }),
-            box: input.box,
-            caller,
+            ...(box === undefined ? {} : { box }),
           });
-          return { session: `s-${String(made).padStart(6, "0")}`, ref: `${input.harness} ${native}`, operation: `op-${String(made)}` };
         },
       }),
     );
-    api.action(
-      stubAction("session.ask", {
-        home,
-        input: z.looseObject({ session: z.string(), prompt: z.string() }),
-        output: z.any(),
-        recovery: "repeat",
-        result: async (input) => {
-          const session = harnesses.sessions.get(input.session);
-          if (session === undefined) throw new Error(`no fake session ${input.session}`);
-          const value = await harnesses.answer({ harness: session.harness, step: stepOf(input.prompt), prompt: input.prompt, ref: input.session, ...(session.cwd === undefined ? {} : { cwd: session.cwd }), ...(session.visible === undefined ? {} : { visible: session.visible }) });
-          return { value };
-        },
-      }),
-    );
+    api.action(action(sessionAsk, {
+      recovery: "repeat",
+      effect: "write",
+      world: "local",
+      async run(input) {
+        const [ref, session] = harnesses.lookup(input.session);
+        if (session.ended) throw new Error(`fake session ${ref} already ended`);
+        const prompt = input.prompt.sections.map((section) => section.text).join("\n");
+        const value = await harnesses.answer({ harness: session.harness, step: stepOf(prompt), prompt, ref, ...(session.cwd === undefined ? {} : { cwd: session.cwd }), ...(session.visible === undefined ? {} : { visible: session.visible }) });
+        return { value };
+      },
+    }));
+    api.action(action(sessionEnd, {
+      recovery: "repeat",
+      effect: "write",
+      world: "local",
+      run: ({ session: id }) => {
+        const [, session] = harnesses.lookup(id);
+        const ended = !session.ended;
+        session.ended = true;
+        return { ended };
+      },
+    }));
   });
   return Object.assign(made_, {
     bind: (fallback?: CallerBinding): CallerBinding => (caller) => {
@@ -218,19 +246,24 @@ function fakeSessions(home: string, harnesses: Harnesses): Binding {
   });
 }
 
-/** The agent action of each role's harness, answered by the fakes. */
-function fakeAgents(home: string, harnesses: Harnesses) {
+/** The workflow SDK action of each role's harness. */
+function fakeAgents(harnesses: Harnesses) {
   const names = ["lead", "author", "reviewer", "verifier", "judge"];
   return Object.fromEntries(
     names.map((harness) => [
       harness,
-      stubAction(`session.start.${harness}`, {
-        home,
-        input: z.looseObject({ prompt: z.string(), cwd: z.string().optional(), visible: z.array(z.string()).optional() }),
+      action(`session.start.${harness}`, {
+        description: "Open a fake workflow session or answer a one-shot question.",
+        input: z.looseObject({ prompt: z.string().optional(), cwd: z.string().optional(), visible: z.array(z.string()).optional(), box: z.custom<z.output<typeof sessionStart.input>["box"]>().optional() }),
         output: z.any(),
         recovery: "repeat",
-        result: async (input) =>
-          await harnesses.answer({ harness, step: stepOf(input.prompt), prompt: input.prompt, ...(input.cwd === undefined ? {} : { cwd: input.cwd }), ...(input.visible === undefined ? {} : { visible: input.visible }) }),
+        effect: "write",
+        world: "local",
+        async run({ prompt, cwd, visible, box }, { caller }) {
+          const options = { ...(cwd === undefined ? {} : { cwd }), ...(visible === undefined ? {} : { visible }) };
+          if (prompt === undefined) return harnesses.open(harness, caller, { ...options, ...(box === undefined ? {} : { box }) });
+          return await harnesses.answer({ harness, step: stepOf(prompt), prompt, ...options });
+        },
       }),
     ]),
   );
@@ -273,7 +306,7 @@ export interface PstackHostOptions {
 
 /**
  * A host with pstack: requests, timers, git, a fake `proc.run`, fake sessions, the forge module over a fake GitLab
- * with the project acme/billing (42), evidence, plan, pstack, and the workflow module with an agent per role.
+ * with the project acme/billing (42), evidence, plan, pstack, and the workflow module with a fake harness action per role.
  */
 export async function pstackHost(options: PstackHostOptions = {}): Promise<PstackHost> {
   const root = realpathSync(await tempDir("pstack"));
@@ -295,8 +328,8 @@ export async function pstackHost(options: PstackHostOptions = {}): Promise<Pstac
   chmodSync(token, 0o600);
 
   const harnesses = new Harnesses();
-  const agents = fakeAgents(home, harnesses);
-  const sessions = fakeSessions(home, harnesses);
+  const agents = fakeAgents(harnesses);
+  const sessions = fakeSessions(harnesses);
   const offeredAgents: AgentOffer[] = [];
   const ports = fakePorts(options.withoutPorts ?? []);
   const ci = { head: options.ci?.head ?? "success", mergeResult: options.ci?.mergeResult ?? "success" };
