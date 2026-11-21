@@ -155,7 +155,7 @@ Start each subagent with niwa's `session.start` on the harness instance from `ha
 
 ### bug-fix:03.1
 
-by driving the real surface yourself (run the app or the command and watch what it does)
+on the matching surface, driving it yourself (run the app or the command and watch what it does)
 
 ### bug-fix:04.1
 
@@ -592,6 +592,14 @@ The report arrives with its `source`, the channel's own address of it. Keep it a
 
 
 
+### benny-reproduce:05
+
+## 2. The triage verdict
+
+The workflow started you because the recorded triage verdict is `bug`. Nothing is waited for, and there is no marker to check.
+
+
+
 ### benny-reproduce:06.1
 
 Re-read the report immediately before starting work.
@@ -608,7 +616,7 @@ An artifact may come from the report, tracker issue
 
 ## 4. Report status
 
-Answer the status you reached in your result, in short plain strings: Reproducing, Could not reproduce, Blocked, Reproduced, Verifying existing fix, Attempting bounded fix, Draft pull request opened, Fix did not land. The workflow tells the owner through `benny.channel.notify`. Keep detailed status in the run output, and post a root message nowhere.
+Answer the status you reached in your result, in short plain strings: Reproducing, Could not reproduce, Blocked, Reproduced, Verifying existing fix, Attempting bounded fix, Draft pull request opened, Fix did not land. The workflow tells the owner through `benny.channel.notify`. Keep detailed status in the run output, and post no root message anywhere.
 
 
 
@@ -633,6 +641,10 @@ If the control port is absent or any required capability is missing, mark the ru
 Read the whole report, and the tracker issue when it names one.
 
 ### benny-reproduce:13.3
+
+Each helper gets a narrow question and the rule that it posts nothing.
+
+### benny-reproduce:13.5
 
 Read the history of the code (`git log`, `git blame` and the pull requests that changed it) for regression history and defensive code.
 
@@ -780,5 +792,9 @@ Report which features it can drive and which are blocked.
 3. Pick one feature `benny.control.capabilities` lists.
 
 ### benny-control-adapter:07.3
+
+5. Exercise one disposable state through the port's actions.
+
+### benny-control-adapter:07.5
 
 Enable repro work only when all nine steps succeed.
