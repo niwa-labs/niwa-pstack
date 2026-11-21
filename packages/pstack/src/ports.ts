@@ -165,3 +165,20 @@ export const CONTROL_ACTIONS = [
   "benny.control.record",
   "benny.control.cleanup",
 ] as const;
+
+/** Every action reference of the three ports. */
+export const PORT_ACTIONS = [
+  bennyTrackerFind,
+  bennyTrackerCreate,
+  bennyTrackerComment,
+  bennyTrackerLinkPr,
+  bennyChannelReply,
+  bennyChannelNotify,
+  bennyControlCapabilities,
+  bennyControlBringUp,
+  bennyControlDrive,
+  bennyControlInspect,
+  bennyControlScreenshot,
+  bennyControlRecord,
+  bennyControlCleanup,
+] as const;

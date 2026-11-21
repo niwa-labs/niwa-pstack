@@ -75,3 +75,62 @@ test("without Benny there is no agent, no report action and none of his automati
   await expect(made.asOwner("benny.report", { report: "x" })).rejects.toThrow();
   await promote(made);
 }, 240_000);
+
+test("a report with a source gets its verdict once, in its own thread, through the channel, and the session is shown the tracker, not the channel", async () => {
+  const made = await served();
+  await promote(made);
+  made.ports.calls.length = 0;
+  const before = (await runsOf(made, "benny-reproduce")).length;
+  made.harnesses.answers["benny-triage:triage"] = async () => {
+    const created = (await made.asOwner("benny.tracker.create", { title: "README names the wrong service", body: "Quoted.", source: "thread-9" })) as { id: string; url: string };
+    return { verdict: "bug", owner: "the README", summary: "The README names the wrong service.", tracker: created };
+  };
+  await made.asOwner("benny.report", { report: "The README calls the service payroll.", from: "a customer", source: "thread-9" });
+  await eventually(async () => (await runsOf(made, "benny-reproduce")).length === before + 1, 60_000, "the bug was not reproduced");
+
+  const replies = made.ports.of("benny.channel.reply");
+  expect(replies).toHaveLength(1);
+  expect(replies[0]?.input).toEqual({ source: "thread-9", text: "bug: The README names the wrong service.\nhttps://tracker.example/issue/ISSUE-1" });
+  const triage = made.harnesses.of("benny-triage:triage").at(-1);
+  expect(triage?.visible).toEqual(["benny.tracker.find", "benny.tracker.create", "benny.tracker.comment"]);
+  expect(triage?.prompt).toContain("The report's source: thread-9");
+  expect(made.ports.issues.get("ISSUE-1")?.prs).toEqual([expect.stringMatching(/^gitlab\.example\.com\/acme\/billing\/pr\/\d+$/)]);
+  expect(made.ports.of("benny.tracker.link-pr")).toHaveLength(1);
+  expect(made.ports.of("benny.channel.notify")).toEqual([expect.objectContaining({ input: expect.objectContaining({ source: "thread-9" }) })]);
+}, 240_000);
+
+test("the reproduction session is shown the control actions of the product, and a report with no source posts nowhere", async () => {
+  const made = await served();
+  await promote(made);
+  made.ports.calls.length = 0;
+  const before = (await runsOf(made, "benny-reproduce")).length;
+  await made.asOwner("benny.report", { report: "The README calls the service payroll." });
+  await eventually(async () => (await runsOf(made, "benny-reproduce")).length === before + 1, 60_000, "the bug was not reproduced");
+
+  const repro = made.harnesses.of("benny-reproduce:reproduce").at(-1);
+  expect(repro?.visible).toEqual([
+    "benny.control.capabilities",
+    "benny.control.bring-up",
+    "benny.control.drive",
+    "benny.control.inspect",
+    "benny.control.screenshot",
+    "benny.control.record",
+    "benny.control.cleanup",
+  ]);
+  expect(repro?.prompt).toContain("benny.control.capabilities");
+  expect(made.ports.of("benny.channel.reply")).toEqual([]);
+  expect(made.ports.of("benny.channel.notify")).toEqual([]);
+  expect(made.ports.of("benny.tracker.link-pr")).toEqual([]);
+}, 240_000);
+
+test("a report whose bug is not reproduced is told to the channel once, and no pull request is linked", async () => {
+  const made = await served();
+  await promote(made);
+  made.ports.calls.length = 0;
+  made.harnesses.answers["benny-reproduce:reproduce"] = () => ({ reproduced: false, runs: ["The README says billing."] });
+  const before = (await runsOf(made, "benny-reproduce")).length;
+  await made.asOwner("benny.report", { report: "The README calls the service payroll.", source: "thread-3" });
+  await eventually(async () => (await runsOf(made, "benny-reproduce")).length === before + 1, 60_000, "the bug was not reproduced");
+  expect(made.ports.of("benny.channel.notify")).toEqual([expect.objectContaining({ input: { text: "Could not reproduce: The README names the wrong service.", source: "thread-3" } })]);
+  expect(made.ports.of("benny.tracker.link-pr")).toEqual([]);
+}, 240_000);

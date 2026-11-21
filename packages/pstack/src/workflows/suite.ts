@@ -67,6 +67,10 @@ export default workflow(
       "pstack.upstream.assemble",
       "pstack.upstream.commit",
       "pstack.upstream.state",
+      // What Benny's two automations call through the owner's ports: a child run holds no more than the suite does.
+      "benny.tracker.*",
+      "benny.channel.*",
+      "benny.control.*",
     ],
     phases: [
       { title: "Find", detail: "Which built-ins have a candidate version" },

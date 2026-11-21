@@ -4,13 +4,14 @@
  */
 
 import { action } from "@niwa-labs/core";
+import type { ActionRef } from "@niwa-labs/core";
 import { AGENT, BUILTIN_WORKFLOW, plugin } from "@niwa-labs/plugin";
 import type { Plugin } from "@niwa-labs/plugin";
 import { sessionStart } from "@niwa-labs/sessions/records";
 
 import { authorLaunch, worktreesOf } from "./author.ts";
 import { UNGATED, gatedOf, scriptOf } from "./catalog.ts";
-import { BENNY_PORTS } from "./ports.ts";
+import { BENNY_PORTS, PORT_ACTIONS } from "./ports.ts";
 import { BennyReported, bennyReport, pstackAuthorStart, pstackRoles } from "./records.ts";
 import { Roles } from "./roles.ts";
 import { upstreamActions } from "./upstream-actions.ts";
@@ -71,6 +72,22 @@ export function pstackPlugin(options: PstackOptions): Plugin {
     for (const one of upstreamActions(() => api.home())) api.action(one);
     api.action(action(pstackRoles, { recovery: "repeat", effect: "read", world: "niwa", run: () => roles }));
     const benny = options.benny;
+    if (benny === undefined) {
+      // The suite starts Benny's automations, so its grant holds the port actions they call, and a grant can only name
+      // actions that exist. Without Benny no provider serves them: these answer that, and no more.
+      for (const ref of PORT_ACTIONS) {
+        api.action(
+          action(ref as ActionRef<unknown, unknown, unknown>, {
+            recovery: "repeat",
+            effect: "read",
+            world: "niwa",
+            run: () => {
+              throw new Error(`${ref.name}: Benny is not enabled on this host, so no plugin serves his ports`);
+            },
+          }),
+        );
+      }
+    }
     if (benny !== undefined) {
       api.declare(BennyReported);
       api.offer(AGENT, { name: "benny", harness: benny.harness ?? roles.lead.harness, prompt: BENNY_PROMPT });

@@ -25,6 +25,8 @@ test("a host with no Benny needs no port", async () => {
   const made = await pstackHost({ benny: false, withoutPorts: ["tracker", "channel", "control"] });
   hosts.push(made);
   expect(made.agents).toEqual([]);
+  // The suite's grant names the port actions, so they exist; with no Benny they only say so.
+  await expect(made.asOwner("benny.tracker.find", { text: "x" })).rejects.toThrow("Benny is not enabled");
 }, 60_000);
 
 test("a provider's actions are held to the contract: input and output are checked by the references", async () => {

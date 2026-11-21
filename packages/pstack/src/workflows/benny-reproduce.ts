@@ -6,9 +6,20 @@
 import type { ScriptApi } from "@niwa-labs/script";
 
 import { change, changedSchema, titleOf } from "./lib/change.ts";
-import { api, roles, seatOptions, stepTag } from "./lib/script.ts";
+import { api, prSubject, roles, seatOptions, stepTag } from "./lib/script.ts";
 import text from "./texts/benny-reproduce.json";
 import worker from "./texts/worker.json";
+
+/** The actions of the product control the reproduction session is shown: it drives the real surface through them. */
+const CONTROL = [
+  "benny.control.capabilities",
+  "benny.control.bring-up",
+  "benny.control.drive",
+  "benny.control.inspect",
+  "benny.control.screenshot",
+  "benny.control.record",
+  "benny.control.cleanup",
+];
 
 declare const workflow: ScriptApi["workflow"];
 declare const z: ScriptApi["z"];
@@ -18,6 +29,8 @@ interface Triaged {
   report: string;
   owner: string;
   summary: string;
+  source?: string;
+  tracker?: { id: string; url: string };
   repo: { host: string; path: string; local: string };
   worktrees: string;
   base: string;
@@ -50,6 +63,15 @@ export default workflow(
       "forge.pipeline.read@{data.repo.host}/{data.repo.path}",
       "evidence.attest",
       "evidence.covers",
+      "benny.control.capabilities",
+      "benny.control.bring-up",
+      "benny.control.drive",
+      "benny.control.inspect",
+      "benny.control.screenshot",
+      "benny.control.record",
+      "benny.control.cleanup",
+      "benny.tracker.link-pr",
+      "benny.channel.notify",
     ],
   },
   async ({ data }: { data: Triaged }) => {
@@ -63,14 +85,22 @@ export default workflow(
         text.text.trim(),
         "",
         `Reproduce this bug twice on the real surface, without changing code. The triage: ${data.summary} (owned by ${data.owner}).`,
+        "Drive the product only through the benny.control.* actions: read what the control can drive first (benny.control.capabilities); if it lacks a capability, answer that you could not reproduce it and why.",
         "",
         "<report>",
         data.report,
         "</report>",
       ].join("\n"),
-      { ...seatOptions(seats.lead), mode: "ask", cwd: data.repo.local, schema: reproduced, label: "reproduce" },
+      { ...seatOptions(seats.lead), mode: "ask", cwd: data.repo.local, schema: reproduced, label: "reproduce", visible: CONTROL },
     );
-    if (!repro.reproduced || repro.runs.length < 2) return { status: "not-reproduced" as const, runs: repro.runs };
+    // The coordinator is the only one who tells the owner: one concise message, in the report's thread when it has one.
+    const notify = async (key: string, text: string): Promise<void> => {
+      if (data.source !== undefined) await api().call("benny.channel.notify", { text, source: data.source }, { label: key });
+    };
+    if (!repro.reproduced || repro.runs.length < 2) {
+      await notify("notify-not-reproduced", `Could not reproduce: ${data.summary}`);
+      return { status: "not-reproduced" as const, runs: repro.runs };
+    }
     const task = `Fix the bug Benny reproduced: ${data.summary}\n\nWhat the two runs showed:\n${repro.runs.map((one) => `- ${one}`).join("\n")}`;
     const done = await change("fix", {
       playbook: { name: "benny-reproduce", title: text.title, text: text.text },
@@ -83,6 +113,8 @@ export default workflow(
       extra: ["Commit the failing repro first, then the fix; smoke the blast radius."],
       draft: true,
     });
+    if (data.tracker !== undefined) await api().call("benny.tracker.link-pr", { id: data.tracker.id, pr: prSubject(data.repo, done.pr) }, { label: "link-pr" });
+    await notify("notify-fixed", `Reproduced, and a draft pull request is open (${prSubject(data.repo, done.pr)}): ${data.summary}`);
     return { ...done, runs: repro.runs };
   },
 );
