@@ -6,7 +6,7 @@ import { readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { OursTexts, UpstreamTexts, analyze, assemble, jsonOf, parseMapping } from "../src/mapping/index.ts";
+import { OursTexts, UpstreamTexts, analyze, assemble, jsonOf, parseMapping, verifyTextsIn } from "../src/mapping/index.ts";
 import { Git } from "../src/mapping/git.ts";
 import { MAPPING_FILE, PACKAGE_DIR, TEXTS_DIR, UPSTREAM_DIR } from "../src/upstream.ts";
 
@@ -39,6 +39,21 @@ test("the texts the scripts import are the ones the map assembles, and no other"
   const made = assemble(mapping, upstream, ours);
   expect(texts.map((one) => one.file).sort()).toEqual(made.map((one) => `${one.name}.json`).sort());
   for (const one of made) expect(texts.find((found) => found.file === `${one.name}.json`)?.raw).toBe(jsonOf(one));
+});
+
+test("every text equals upstream except exactly where an adapted or a dropped entry says so", () => {
+  expect(verifyTextsIn(mapping, upstream, ours, TEXTS_DIR)).toEqual([]);
+});
+
+test("no script edits a text it imports: it is given to a session as the map assembled it", () => {
+  const names = texts.map((one) => one.file.replace(/\.json$/, ""));
+  for (const { file, source } of scripts()) {
+    const bound = [...source.matchAll(/import (\w+) from "(?:\.\.?\/)+(?:workflows\/)?texts\/([\w-]+)\.json"/g)].filter((found) => names.includes(found[2] as string)).map((found) => found[1] as string);
+    for (const local of bound) {
+      const edited = new RegExp(`\\b${local}\\.text\\.(?!trim\\(\\))\\w+`).exec(source)?.[0];
+      expect({ file, local, edited }).toEqual({ file, local, edited: undefined });
+    }
+  }
 });
 
 test("every text is imported by a script", () => {

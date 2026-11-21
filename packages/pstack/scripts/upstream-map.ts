@@ -4,7 +4,8 @@
 //            validate the mapping, report coverage of the upstream text, and what became of each entry's ranges since
 //            the commits they were recorded at. Draws no conclusion. `--out` writes the whole report as JSON;
 //            `--summary` prints one line of JSON numbers instead of the text. A map that cannot be read at all is one
-//            problem, said in the same form; the exit is 1 whenever the map has a problem.
+//            problem, said in the same form. It also holds the texts the scripts import to the map, counted apart (`textProblems`):
+//            the exit is 1 whenever the map or a text has a problem.
 //   advance  [--upstream <checkout>] [--head <rev>]   record the unchanged entries at the current commits
 //   accept   <id>... [--upstream <checkout>] [--head <rev>]   record the named entries at the carried positions
 //   assemble [--check]   write the texts the scripts import from the mapping; with `--check`, only compare them
@@ -15,7 +16,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-import { Git, OursTexts, UpstreamTexts, WORKTREE, accept, advance, analyze, assemble, formatMapping, formatReport, jsonOf, parseMapping, summaryOf, unreadable, writeTexts } from "../src/mapping/index.ts";
+import { Git, OursTexts, UpstreamTexts, WORKTREE, accept, advance, analyze, assemble, formatMapping, formatReport, jsonOf, parseMapping, summaryOf, unreadable, verifyTextsIn, writeTexts } from "../src/mapping/index.ts";
 import { MAPPING_FILE, PACKAGE_DIR, TEXTS_DIR, UPSTREAM_DIR, refreshUpstream } from "../src/upstream.ts";
 
 const [command, ...rest] = process.argv.slice(2);
@@ -49,7 +50,7 @@ const open = () => {
   const upstream = new UpstreamTexts(UPSTREAM_DIR, upstreamCheckout === undefined ? undefined : resolve(upstreamCheckout));
   const ours = new OursTexts(repoRoot, flags.has("--worktree") ? WORKTREE : (text("--head") ?? "HEAD"));
   const mapping = parseMapping(readFileSync(text("--map") ?? MAPPING_FILE, "utf8"));
-  return { upstream, ours, mapping, report: analyze(mapping, upstream, ours) };
+  return { upstream, ours, mapping, report: { ...analyze(mapping, upstream, ours), texts: verifyTextsIn(mapping, upstream, ours, TEXTS_DIR) } };
 };
 
 if (command === "check") {
@@ -68,7 +69,7 @@ if (command === "check") {
   const { report } = opened;
   if (out !== undefined) writeFileSync(resolve(out), `${JSON.stringify(report, null, 2)}\n`);
   console.log(flags.has("--summary") ? JSON.stringify(summaryOf(report)) : formatReport(report));
-  process.exit(report.problems.length === 0 ? 0 : 1);
+  process.exit(report.problems.length === 0 && report.texts.length === 0 ? 0 : 1);
 } else if (command === "advance" || command === "accept") {
   const { mapping, report } = open();
   if (report.problems.length > 0) throw new Error(`the mapping has ${String(report.problems.length)} problems: run check`);

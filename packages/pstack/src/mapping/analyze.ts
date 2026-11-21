@@ -63,6 +63,8 @@ export interface Report {
   readonly upstream: { readonly commit: string };
   readonly ours: { readonly head: string };
   readonly problems: readonly Problem[];
+  /** What is wrong with the texts the scripts import, held to the map: measured apart, for they follow the map and lag it. */
+  readonly texts: readonly Problem[];
   readonly coverage: { readonly size: number; readonly covered: number; readonly percent: number; readonly files: readonly FileCoverage[] };
   readonly entries: readonly EntryMove[];
   /** The entries that are not unchanged. */
@@ -213,6 +215,7 @@ export function analyze(mapping: Mapping, upstream: UpstreamTexts, ours: Texts):
     upstream: { commit: upstream.current },
     ours: { head: ours.current },
     problems,
+    texts: [],
     coverage: { size, covered, percent: percentOf(covered, size), files },
     entries,
     unresolved: entries.filter((one) => one.status !== "unchanged").length,

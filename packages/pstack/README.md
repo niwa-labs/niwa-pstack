@@ -121,14 +121,19 @@ pack. `upstream/mapping.json` records what became of it in pstack, an entry to a
   one commit never overlap. Our side is not covered: `ours` only links a block to the code or text that implements or
   carries it, so several entries may link to the same range, and code of ours with no entry is fine.
 - The texts the scripts import, `src/workflows/texts/*.json`, are assembled from the map: the `prompt` blocks of a file
-  verbatim from the snapshot, the `adapted` ones from our text, in upstream's order. `code` and `dropped` blocks are in
-  no prompt. They are not edited by hand: `assemble` writes them and a test holds them to the map.
+  verbatim from the snapshot, the `adapted` ones from our text, in upstream's order. `dropped` blocks are in no prompt.
+  A text is the files it is made of, each cut at its last non-blank character and followed by one blank line, and that
+  glue is the only thing in it that is not a block. They are not edited by hand: `assemble` writes them.
+- Nothing is edited in a prompt outside the map. A text equals upstream except exactly where an `adapted` entry puts our
+  wording in and a `dropped` entry takes a range out, so a file that goes into a text has no `code` block: a block that
+  code of ours implements and a prompt leaves out is `dropped`, and its note says where the code is. `check` reads the
+  texts as they are on disk and holds each to the map (see below).
 
 The tool is `bun packages/pstack/scripts/upstream-map.ts`:
 
 | Command | What it does |
 |---|---|
-| `check` | Validates the map and reports the coverage of upstream's characters, per file and in total, with the uncovered ranges. For each entry, on each side, it follows the range from the commit it was recorded at to the current one (upstream: to the snapshot's commit; ours: to `HEAD`, or the working tree with `--worktree`) and says unchanged (it only shifted), touched (with the old and the new text of the range) or gone. It also lists upstream text that is new and uncovered. It draws no conclusion. `--out <file>` writes the report as JSON, `--summary` prints the numbers. |
+| `check` | Validates the map and reports the coverage of upstream's characters, per file and in total, with the uncovered ranges. For each entry, on each side, it follows the range from the commit it was recorded at to the current one (upstream: to the snapshot's commit; ours: to `HEAD`, or the working tree with `--worktree`) and says unchanged (it only shifted), touched (with the old and the new text of the range) or gone. It also lists upstream text that is new and uncovered, and the texts' own problems (an edit by hand, a block left out as `code`, upstream text no entry accounts for, a text with no file or a file with no text), which it counts apart from the map's because they follow the map and lag it until `assemble`. It draws no conclusion. `--out <file>` writes the report as JSON, `--summary` prints the numbers. |
 | `advance` | Records the entries that are unchanged at the current commits and positions. |
 | `accept <id>...` | Records the named entries at the positions their ranges were carried to. |
 | `assemble` | Writes the texts from the map; `--check` only compares. |
