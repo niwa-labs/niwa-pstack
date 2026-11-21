@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "refresh-upstream": "bun scripts/refresh-upstream.ts"
+    "upstream-map": "bun scripts/upstream-map.ts"
   },
   "exports": {
     ".": "./src/index.ts"
