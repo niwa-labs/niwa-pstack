@@ -76,6 +76,8 @@ test("the suite tries the set by its versions and promotes the candidates in one
   if (failed.length > 0) console.log((await syncErrors(made.host, "")).join("\n"));
   expect(failed).toEqual([]);
   expect(ran.outcome?.result.status).toBe("promoted");
+  // The sync is gated, so the suite tried it: it carried a reworded upstream across and assembled the texts.
+  expect((ran.outcome?.result.rows as Array<{ builtin: string; passed: boolean }>).filter((one) => one.builtin === "upstream-sync")).toEqual([expect.objectContaining({ passed: true })]);
 
   const promoted = await recordsOf(made.host, "workflow.builtin.promoted");
   expect(promoted).toHaveLength(1);

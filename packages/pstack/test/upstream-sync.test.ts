@@ -9,7 +9,7 @@ import { join } from "node:path";
 
 import { eventually } from "@niwa-labs/testing";
 
-import { SYNC, UNGATED, gatedOf, scriptOf } from "../src/catalog.ts";
+import { GATED, SYNC, UNGATED, gatedOf, scriptOf } from "../src/catalog.ts";
 import { builtins, commitFile, gitIn, pstackHost, registeredAll } from "./support.ts";
 import type { HarnessCall, PstackHost } from "./support.ts";
 import { commitFiles } from "./mapping-support.ts";
@@ -36,9 +36,10 @@ async function synced(kinds: Parameters<typeof seedPackage>[3] = {}): Promise<{ 
 
 /** Start the sync and wait for its end. */
 async function sync(made: PstackHost, up: { dir: string }, args: Record<string, unknown> = {}): Promise<any> {
-  const id = (await builtins(made.host))[SYNC]?.id;
+  // The sync is gated: until the suite promoted it, a built-in's candidate is started only by a run of pstack's own, so the
+  // script is run on its file, as its own rights, here. The suite's scenario starts it as a candidate.
   const ended = (await made.host.call("workflow.start" as never, {
-    id,
+    file: scriptOf(SYNC),
     args: { repo: { local: made.repo }, worktrees: made.worktrees, base: "main", upstream: { checkout: up.dir }, ...args },
     wait: true,
     timeoutMs: 120_000,
@@ -204,6 +205,14 @@ test("texts the assembled map still cannot make equal to it are not a finished s
   expect(result.summary).toMatchObject({ problems: 0, touched: 0 });
   expect(result.summary.textProblems).toBeGreaterThan(0);
 }, 120_000);
+
+test("the sync is gated like the playbooks: a new version of it is a candidate that starts on nothing", async () => {
+  expect(GATED.map((one) => one.name)).toContain(SYNC);
+  expect(UNGATED.map((one) => one.name)).not.toContain(SYNC);
+  const { made } = await synced();
+  const id = (await builtins(made.host))[SYNC]?.id;
+  await expect(made.host.call("workflow.start" as never, { id, args: {} } as never)).rejects.toThrow("candidate");
+}, 60_000);
 
 test("the sync runs its tool and git on the host: no step of it is a command in a box", async () => {
   const source = readFileSync(scriptOf(SYNC), "utf8");

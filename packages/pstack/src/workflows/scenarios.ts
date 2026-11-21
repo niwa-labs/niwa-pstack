@@ -36,6 +36,8 @@ export interface Scenario {
   name: string;
   args(fixture: Fixture, context: Context): unknown | Promise<unknown>;
   check(ended: Ended, context: Context): string | null;
+  /** What the scenario seeded and no longer needs, removed once its outcome was checked. */
+  after?(fixture: Fixture, context: Context): Promise<void>;
 }
 
 /** The value of a run that ended well, or why it did not. */
@@ -242,6 +244,20 @@ export const SCENARIOS: readonly Scenario[] = [
     check: answered("judged", (value) => (Object.keys(value["table"] ?? {}).length === 2 ? null : "not every variant was graded")),
   },
   {
+    builtin: "upstream-sync",
+    name: "carries the map of a reworded upstream to its new snapshot",
+    args: (f, context) => seedSync(f, context),
+    check: answered("synced", (value) => {
+      if (value["summary"]?.touched !== 0 || value["summary"]?.textProblems !== 0) return `the map was not settled: ${JSON.stringify(value["summary"])}`;
+      return (value["changed"] ?? []).some((file: string) => file.endsWith("texts/worker.json")) ? null : "the texts were not assembled from the map";
+    }),
+    after: async (_f, context) => {
+      const seeded = context["sync"] as { up: string; pkg: string } | undefined;
+      if (seeded === undefined) return;
+      for (const id of [seeded.pkg, seeded.up]) await api().call("git.worktree.remove", { id, force: true }, { label: `sync-clean-${id}` });
+    },
+  },
+  {
     builtin: "benny-triage",
     name: "triages a bug report as a bug",
     args: (f) => ({ id: "suite", type: "benny.reported", data: { report: REPORT, repo: f.repo, worktrees: f.worktrees, base: f.base } }),
@@ -264,6 +280,65 @@ export const SCENARIOS: readonly Scenario[] = [
     check: answered("verified"),
   },
 ];
+
+/** A tiny upstream pstack, as a checkout holds it, and the same one reworded: what the sync scenario carries the map across. */
+const SYNC_UPSTREAM: Record<string, string> = {
+  LICENSE: "MIT License\n",
+  "skills/poteto-mode/SKILL.md": "# Mode\n\nAlpha block.\n",
+  "skills/poteto-mode/worker.md": "Work for the operator.\n",
+  "skills/poteto-mode/playbooks/bug-fix.md": "### Bug fix\n\nReproduce it.\n\nFix the cause.\n",
+};
+const SYNC_REWORDED = { "skills/poteto-mode/worker.md": "Work for the operator, always.\n" };
+
+/** The files of the snapshot the checkout above gives, by their paths in it, and what the sync's map does with each. */
+const SYNC_SNAPSHOT: Array<{ file: string; from: string; kind: "dropped" | "prompt" }> = [
+  { file: "poteto-mode/SKILL.md", from: "skills/poteto-mode/SKILL.md", kind: "dropped" },
+  { file: "poteto-mode/worker.md", from: "skills/poteto-mode/worker.md", kind: "prompt" },
+  { file: "poteto-mode/playbooks/bug-fix.md", from: "skills/poteto-mode/playbooks/bug-fix.md", kind: "prompt" },
+];
+
+/** A worktree of the fixture's repository, for the scenario to seed. */
+async function seedWorktree(key: string, f: Fixture, what: string): Promise<{ id: string; path: string; branch: string }> {
+  return (await api().call("git.worktree.create", { repo: f.repo.local, base: f.base, description: what }, { label: key })) as { id: string; path: string; branch: string };
+}
+
+/** Write a file in a worktree and answer nothing: a command in a box that writes only there. */
+async function seedFile(key: string, cwd: string, file: string, text: string): Promise<void> {
+  const ran = (await api().call("proc.run", { cmd: ["sh", "-c", 'mkdir -p "$(dirname "$1")" && printf %s "$2" > "$1"', "sh", file, text], cwd, timeout: 60_000 }, { label: key })) as { exit: number | null; tail: string };
+  if (ran.exit !== 0) throw new Error(`${file} was not written in ${cwd}: ${ran.tail.slice(-300)}`);
+}
+
+/** Commit what is under `paths` in a seeded worktree, on the host (the plugin's own step): the commit. */
+async function seedCommit(key: string, place: string, message: string, paths: string[]): Promise<string> {
+  return ((await api().call("pstack.upstream.commit", { place, message, paths }, { label: key })) as { head: string }).head;
+}
+
+/**
+ * What the sync scenario seeds: an upstream checkout of one worktree, and a branch of the fixture's repository whose
+ * package folder holds the snapshot of it and a map that covers the snapshot. Upstream is then reworded, so the sync has
+ * a real round of work: the entry that holds the reworded block is touched.
+ */
+async function seedSync(f: Fixture, context: Context): Promise<unknown> {
+  const up = await seedWorktree("sync-up", f, "A tiny upstream pstack for the sync");
+  for (const [index, [file, text]] of Object.entries(SYNC_UPSTREAM).entries()) await seedFile(`sync-up-${String(index)}`, up.path, file, text);
+  const first = await seedCommit("sync-up-commit", up.path, "Upstream pstack", ["LICENSE", "skills"]);
+  const pkg = await seedWorktree("sync-pkg", f, "A tiny pstack package for the sync");
+  const oursCommit = ((await api().call("pstack.upstream.state", { place: pkg.path }, { label: "sync-pkg-head" })) as { head: string }).head;
+  await api().call("pstack.upstream.refresh", { place: pkg.path, checkout: up.path, commit: first, package: "packages/pstack" }, { label: "sync-pkg-snapshot" });
+  const entries = SYNC_SNAPSHOT.map((one, index) => {
+    const text = SYNC_UPSTREAM[one.from] as string;
+    const upstream = { commit: first, file: one.file, range: [0, text.length] };
+    return one.kind === "dropped"
+      ? { id: `skill:${String(index)}`, upstream, ours: [], kind: "dropped", note: "Not taken: a skill of Cursor's." }
+      : { id: `${one.file.split("/").at(-1)?.replace(/\.md$/, "") ?? one.file}:01`, upstream, ours: [{ commit: oursCommit, file: "README.md", range: [0, 1] }], kind: "prompt" };
+  });
+  await seedFile("sync-pkg-map", pkg.path, "packages/pstack/upstream/mapping.json", `${JSON.stringify({ entries }, null, 2)}\n`);
+  await seedCommit("sync-pkg-commit", pkg.path, "Snapshot and map", ["packages"]);
+  for (const [index, [file, text]] of Object.entries(SYNC_REWORDED).entries()) await seedFile(`sync-reword-${String(index)}`, up.path, file, text);
+  await seedCommit("sync-up-reword", up.path, "Reword upstream", ["skills"]);
+  context["sync"] = { up: up.id, pkg: pkg.id };
+  return { repo: { local: f.repo.local }, worktrees: f.worktrees, base: pkg.branch, upstream: { checkout: up.path } };
+}
 
 /** What Benny is handed in the scenarios: a report of a bug in the fixture. */
 const REPORT = "The README calls the service payroll; it is the billing service.";

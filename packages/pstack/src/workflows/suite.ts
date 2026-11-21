@@ -60,6 +60,13 @@ export default workflow(
       "evidence.list",
       "plan.set",
       "plan.get",
+      // The upstream sync's steps: the scenario seeds with some, and the sync, a child of the suite, calls them all.
+      "pstack.upstream.refresh",
+      "pstack.upstream.measure",
+      "pstack.upstream.record",
+      "pstack.upstream.assemble",
+      "pstack.upstream.commit",
+      "pstack.upstream.state",
     ],
     phases: [
       { title: "Find", detail: "Which built-ins have a candidate version" },
@@ -103,6 +110,7 @@ export default workflow(
         ended = { ok: false, error: { name: (error as Error).name, message: (error as Error).message } };
       }
       const why = scenario.check(ended, context);
+      if (scenario.after !== undefined) await scenario.after(fixture, context);
       rows.push({ builtin: scenario.builtin, scenario: scenario.name, passed: why === null, ...(why === null ? {} : { why }) });
     }
     if (rows.some((one) => !one.passed)) return { status: "failed" as const, rows };

@@ -3,7 +3,7 @@
 // server behind the forge module, a `proc.run` that runs where it is asked, and fake harnesses that answer each
 // step of a playbook as the test says.
 
-import { chmodSync, mkdirSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { z } from "zod";
@@ -426,6 +426,11 @@ export function defaultAnswers(made: PstackHost): Answers {
     },
     "benny-triage:triage": () => ({ verdict: "bug", owner: "the README", summary: "The README names the wrong service." }),
     "benny-reproduce:reproduce": () => ({ reproduced: true, runs: ["The README says payroll.", "It still says payroll."] }),
+    // What a boxed author does for the sync: it reads the report in its worktree and settles the touched entries as carried.
+    "upstream-sync:round": (call) => {
+      const report = JSON.parse(readFileSync(join(call.cwd as string, ".upstream-map-report.json"), "utf8")) as { entries: Array<{ id: string; status: string }> };
+      return { summary: "settled the touched entries", decisions: [], accept: report.entries.filter((one) => one.status === "touched").map((one) => one.id) };
+    },
     "session-pickup:resume": () => ({ where: "Both pull requests merged.", verified: ["changelog", "contributing"], next: "Nothing is left." }),
   };
 }

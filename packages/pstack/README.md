@@ -63,7 +63,7 @@ modules before it and the workflow module after it. `bind` is the binding of the
 | pause-safely | A `wip:` commit and a resume note in the worktree the work is in |
 | session-pickup | Where the work stands, from the plan and what was attested on it |
 | worktree-cleanup | On a merge on the forge, removes the clean worktrees the merged head was built in |
-| upstream-sync | Not a playbook: carries the map of the upstream snapshot to a new snapshot, below |
+| upstream-sync | Not a playbook: carries the map of the upstream snapshot to a new snapshot, below; gated like the playbooks |
 
 The playbooks are upstream's text with niwa's wording where upstream names something a session does not have: Cursor's
 skills and their principles, model slugs, `/loop`, `gh` and `origin`, `agent-transcripts/`. A helper is started with
@@ -94,12 +94,15 @@ The merge is made at the head the policy was checked on, and is read back from t
 
 ## Candidates and the suite
 
-Every built-in but the suite is offered gated. A new version comes in as a candidate that the host neither installs nor
+Every built-in but the suite is offered gated, the upstream sync among them. A new version comes in as a candidate that the host neither installs nor
 runs on events. Before any version was accepted, the candidate is shown and runs on nothing.
 
 The suite (`pstack-suite`) is started by the owner on a fixture: a repository it may change, on a forge project it may
 merge into. It runs every scenario in order on the set under trial, each built-in started by its version. The entry is
-pinned to the playbook versions of the set, and one scenario hands its plan to the next. Only when every scenario passes
+pinned to the playbook versions of the set, and one scenario hands its plan to the next. The sync's scenario seeds what it
+needs itself, in worktrees of the fixture: a tiny upstream checkout, and a branch holding a tiny package folder whose map
+covers its snapshot; upstream is reworded, and the scenario passes when the sync carries the map across and assembles
+the texts. Only when every scenario passes
 does it promote the candidates, in one `workflow.builtin.promote` with its run's id. On its own fixture's plans, the
 suite gives the go itself, as a run may.
 
@@ -154,18 +157,27 @@ snapshot's.
 
 ### Updating upstream
 
-Start `pstack-upstream-sync` with the path of an upstream checkout (and a commit of it, if not its HEAD). It is not
-gated: it changes no host. In a worktree of its own it takes the snapshot and commits it, then loops: the tool measures
-the map, and an author boxed to the worktree works on what the report shows (maps uncovered text, follows touched and
-gone entries into our code and texts, drops what is not taken with the reason), commits, and the unchanged entries are
-recorded again. It stops when the coverage is at least 95% (`min`) and no entry is touched or gone, or after `rounds`
-rounds, and says what is left. What would change what a prompt or a workflow does is not the author's to decide: it
-goes to the owner as a question, and its answer is carried out in a last round. The texts are then assembled from the
-map and committed. The run ends on a branch of commits; the workflows they change come in as candidates and go through
-`pstack-suite` as before.
+Start `pstack-upstream-sync` with the path of an upstream checkout (and a commit of it, if not its HEAD, and the
+`package` folder of the repository, `packages/pstack` by default). It is gated like the playbooks: a new version of it
+comes in as a candidate and the suite tries it first. In a worktree of its own it takes the snapshot and commits it, then
+loops: the tool measures the map, and an author boxed to the worktree works on what the report shows (maps uncovered
+text, follows touched and gone entries into our code and texts, drops what is not taken with the reason). The author
+edits files and answers the ids of the entries that are settled where the report carried them; the workflow commits
+what it edited, records those entries and the unchanged ones, and measures again. It stops when the coverage is at least
+95% (`min`) and no entry is touched or gone, or after `rounds` rounds, and says what is left. What would change what a
+prompt or a workflow does is not the author's to decide: it goes to the owner as a question, and its answer is carried
+out in a last round. The texts are then assembled from the map and committed, and the map is measured once more: the
+texts lag the map until they are assembled, so they are held to it only then, and the run is `synced` only when the map
+and the texts have no problem.
+
+The tool and git run on the host, in the pstack plugin's actions (`pstack.upstream.refresh`, `measure`, `record`,
+`assemble`, `commit` and `state`), never in `proc.run`: a real box reads only its own directory, so it can read neither
+the upstream checkout nor the repository a worktree belongs to, and the boxed author cannot run git either. Each action
+works only on one of niwa's worktrees, reads the checkout through git and never writes it, and writes inside the
+worktree.
 
 By hand, the same: `refresh`, then `check`, settle what it shows, `accept` or edit the entries, `advance`, `assemble`.
-The tool runs in a box that must be able to read the checkout.
+The tool reads and writes the package folder it is installed in.
 
 ## What niwa does not give yet
 
@@ -173,3 +185,7 @@ The tool runs in a box that must be able to read the checkout.
   is a right of the pstack plugin.
 - The git module's actions carry no target, so the entry's `git.*@{repo.local}` reaches none of them. The entry names
   the worktree actions it calls untargeted.
+- A real `proc.run` box reads only its own directory, and a niwa worktree's `.git` leads into the main repository, outside
+  it: git does not run in a worktree there at all (`rev-parse`, `status`, `show` and `commit` all fail as "not a git
+  repository"). The lanes read git through `proc.run`, so they work only where the box is not applied; the upstream sync
+  does its tool and git work on the host instead.
