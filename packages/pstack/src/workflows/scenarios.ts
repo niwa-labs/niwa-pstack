@@ -160,16 +160,40 @@ export const SCENARIOS: readonly Scenario[] = [
   },
   {
     builtin: "worktree-cleanup",
-    name: "removes the clean worktrees of a merged pull request",
-    args: (_f, context) => {
-      const landed = (context["landed"] as Array<{ pr: number; head: string }> | undefined)?.[0];
-      if (landed === undefined) throw new Error("no pull request was landed by an earlier scenario");
-      return { id: "suite", type: "forge.pr.merged", data: { pr: { repo: { host: "", path: "" }, number: landed.pr }, head: landed.head } };
+    name: "keeps a registered checkout until the forge has recorded its merge",
+    args: async (f, context) => {
+      const candidate = (context["verifiedForCleanup"] as Array<{ pr: number; head: string }> | undefined)?.[0]
+        ?? (context["landed"] as Array<{ pr: number; head: string }> | undefined)?.[0];
+      if (candidate === undefined) throw new Error("no pull request was verified by an earlier scenario");
+      const { host, path } = f.repo;
+      const { binding } = await api().call("pstack.pr.binding", { repo: { host, path }, number: candidate.pr, head: candidate.head }, { label: "cleanup-fixture" }) as {
+        binding?: { worktree: { id: string } };
+      };
+      if (binding === undefined) throw new Error("no checkout was recorded for the fixture pull request");
+      context["cleanupCheckout"] = { id: binding.worktree.id, head: candidate.head };
+      return {
+        id: "suite-unobserved",
+        type: "forge.pr.merged",
+        data: {
+          pr: { repo: { host, path, projectId: 1 }, number: candidate.pr },
+          base: f.base,
+          head: candidate.head,
+          source: { kind: "observed", version: 1 },
+        },
+      };
     },
     check: (ended) => {
       const got = valueOf(ended);
       if ("failed" in got) return got.failed;
-      return (got.value["removed"] ?? []).length > 0 ? null : `nothing was removed: ${JSON.stringify(got.value)}`;
+      if (!Array.isArray(got.value["removed"]) || got.value["removed"].length !== 0) {
+        return `removed a checkout without a forge observation: ${JSON.stringify(got.value)}`;
+      }
+      return null;
+    },
+    after: async (_f, context) => {
+      const expected = context["cleanupCheckout"] as { id: string; head: string };
+      const result = await api().call("git.worktree.get", { id: expected.id }, { label: "cleanup-checkout-kept" }) as { head?: string };
+      if (result.head !== expected.head) throw new Error(`the fixture checkout ${expected.id} was changed or removed`);
     },
   },
   {

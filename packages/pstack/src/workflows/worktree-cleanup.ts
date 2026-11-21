@@ -1,53 +1,57 @@
-// Worktree cleanup, on a merge: a pull request merged on the forge leaves the worktrees its head was built in with
-// nothing to do. Those of them that are clean and run no session are removed; one with uncommitted work or a live
-// session is left and named.
-
+// Clean up the registered checkout of the pull request named by an observed merge.
+import { PrMerged } from "@niwa-labs/forge/records";
 import type { ScriptApi } from "@niwa-labs/script";
 
+import { isRefusal } from "./lib/catalog.ts";
 import { api } from "./lib/script.ts";
 
 declare const workflow: ScriptApi["workflow"];
 declare const z: ScriptApi["z"];
 
-/** The merge, as much of `forge.pr.merged` as the cleanup reads. */
-interface Merged {
-  pr: { repo: { host: string; path: string }; number: number };
-  head?: string;
+interface MergeTrigger {
+  id: string;
+  type: string;
+  data: unknown;
 }
 
-/** A worktree as `git.worktree.list` shows it. */
-interface Listed {
-  id: string;
-  state: string;
-  path: string;
-  head?: string;
-  dirty?: boolean;
-  sessions?: string[];
+interface Binding {
+  worktree: { id: string; repo: string; path: string; branch: string };
 }
 
 export default workflow(
   {
     name: "pstack-worktree-cleanup",
-    description: "Remove the worktrees a merged pull request was built in",
+    description: "Remove the registered checkout of a merged pull request",
     on: ["forge.pr.merged"],
     output: z.strictObject({ removed: z.array(z.string()), kept: z.array(z.strictObject({ id: z.string(), why: z.string() })) }),
-    uses: ["git.worktree.list", "git.worktree.remove"],
+    uses: ["niwa.records.read", "pstack.pr.binding", "git.worktree.remove"],
   },
-  async ({ data }: { data: Merged }) => {
-    if (data.head === undefined) return { removed: [], kept: [] };
-    const listed = (await api().call("git.worktree.list", {}, { label: "list" })) as { items: Listed[] };
-    const built = listed.items.filter((one) => one.state === "ok" && one.head === data.head);
-    const removed: string[] = [];
-    const kept: Array<{ id: string; why: string }> = [];
-    for (const one of built) {
-      if (one.dirty === true) kept.push({ id: one.id, why: "it has uncommitted work" });
-      else if ((one.sessions ?? []).length > 0) kept.push({ id: one.id, why: "a session runs in it" });
-      else {
-        // Its commits are the head the forge merged: what its base lacks here is on the forge's trunk.
-        await api().call("git.worktree.remove", { id: one.id, force: true }, { label: `remove-${one.id}` });
-        removed.push(one.id);
-      }
+  async ({ id, type, data }: MergeTrigger) => {
+    const skipped = { removed: [], kept: [] };
+    const merged = PrMerged.schema.safeParse(data);
+    if (type !== PrMerged.name || !merged.success || merged.data.head === undefined) return skipped;
+    const { head, pr: { repo: { host, path }, number } } = merged.data;
+    const repo = { host, path };
+
+    // A caller may start this workflow with its own arguments. Require the observation that the forge wrote.
+    const { records } = await api().read.records(PrMerged, {
+      filter: { "pr.repo.host": host, "pr.repo.path": path, "pr.number": number, head },
+    }, { label: "merge" });
+    const observed = records.find((row) => row.id === id && row.actor.kind === "host");
+    if (observed === undefined) return skipped;
+
+    const { binding } = (await api().call("pstack.pr.binding", { repo, number, head, before: observed.seq }, { label: "binding" })) as { binding?: Binding };
+    if (binding === undefined) return skipped;
+    const { id: worktree, repo: local, path: checkout, branch } = binding.worktree;
+    try {
+      const result = (await api().call("git.worktree.remove", {
+        id: worktree,
+        onlyIf: { repo: local, path: checkout, branch, head, project: repo },
+      }, { label: "remove" })) as { id: string; removed: boolean };
+      return result.removed && result.id === worktree ? { removed: [worktree], kept: [] } : skipped;
+    } catch (error) {
+      if (!isRefusal(error)) throw error;
+      return { removed: [], kept: [{ id: worktree, why: (error as Error).message }] };
     }
-    return { removed, kept };
   },
 );
