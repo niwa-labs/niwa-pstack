@@ -40,6 +40,7 @@ export default workflow(
       "git.worktree.get",
       "git.worktree.remove",
       "proc.run@{worktrees}/*",
+      "pstack.pr.bind",
       "forge.pr.ensure@{repo.host}/{repo.path}/pr/*",
       "forge.pr.read@{repo.host}/{repo.path}",
       "forge.pipeline.read@{repo.host}/{repo.path}",

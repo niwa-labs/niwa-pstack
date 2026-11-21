@@ -23,6 +23,7 @@
         "@niwa-labs/plugin": "*",
         "@niwa-labs/script": "*",
         "@niwa-labs/watch": "*",
+        "@niwa-labs/workflow": "*",
         "zod": "^4.6.7",
       },
       "devDependencies": {
@@ -86,6 +87,8 @@
     "@niwa-labs/testing": ["@niwa-labs/testing@link:../niwa/packages/testing", {}],
 
     "@niwa-labs/watch": ["@niwa-labs/watch@link:../plugins/packages/watch", {}],
+
+    "@niwa-labs/workflow": ["@niwa-labs/workflow@link:../niwa/packages/workflow", {}],
 
     "@types/bun": ["@types/bun@1.4.5", "", { "dependencies": { "bun-types": "1.4.5" } }, "sha512-DpgwNI9z0L1S0gtb45QLCWgwCUcMLnsHYMJHQvpNj7erGiCGBvpggltAIeARrtobNMKMuy0UP7i56tKKgwFs/Q=="],
 

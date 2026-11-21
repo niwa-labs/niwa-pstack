@@ -66,7 +66,9 @@ export default workflow(
       z.strictObject({ status: z.literal("finished"), summary: z.string() }),
     ]),
     uses: [
+      "pstack.pr.binding",
       "forge.pr.merge@{repo.host}/{repo.path}/pr/*",
+      "pstack.pr.bind",
       "forge.pr.ensure@{repo.host}/{repo.path}/pr/*",
       "proc.run@{worktrees}/*",
       "git.*@{repo.local}",

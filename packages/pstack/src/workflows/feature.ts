@@ -31,6 +31,7 @@ export default workflow(
       "box.net@{repo.host}",
       "git.worktree.create",
       "proc.run@{worktrees}/*",
+      "pstack.pr.bind",
       "forge.pr.ensure@{repo.host}/{repo.path}/pr/*",
       "forge.pr.read@{repo.host}/{repo.path}",
       "forge.pipeline.read@{repo.host}/{repo.path}",

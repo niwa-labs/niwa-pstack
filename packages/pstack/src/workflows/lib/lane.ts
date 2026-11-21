@@ -85,6 +85,10 @@ export async function openPr(key: string, opts: { repo: Repo; base: string; buil
   if (out.head !== opts.built.sha) {
     throw new LaneRefused(`the forge has ${out.head} at the head of ${opts.built.wt.branch}, not ${opts.built.sha} the author made: a push the lane did not make`);
   }
+  const { id, path, branch, repo } = opts.built.wt;
+  await api().call("pstack.pr.bind", {
+    repo: forgeRepo(opts.repo), number: out.pr.number, head: out.head, author: opts.built.author, worktree: { id, path, branch, repo },
+  }, { label: `${key}-bind` });
   return { number: out.pr.number, head: out.head, subject: prSubject(opts.repo, out.pr.number) };
 }
 

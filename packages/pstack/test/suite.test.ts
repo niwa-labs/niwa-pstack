@@ -85,12 +85,12 @@ test("the suite tries the set by its versions and promotes the candidates in one
   expect(data.run).toBe(ran.run);
   expect(data.versions.map((one) => one.workflow).sort()).toEqual(gatedOf(true).map(({ name }) => all[name]?.id ?? "").sort());
 
-  // The plan with the go landed both its pull requests on the forge and the stack's bottom landed; the stack's top,
-  // the six changes the other playbooks carried and Benny's fix stay open, for nothing but shipping merges.
+  // GitLab only conditions on the source SHA. All reviewed pairs stay open.
   const merged = [...made.project.mrs.values()].filter((mr) => mr.state === "merged").map((mr) => mr.iid);
   const open = [...made.project.mrs.values()].filter((mr) => mr.state === "opened").map((mr) => mr.iid);
-  expect(merged).toHaveLength(3);
-  expect(open).toHaveLength(8);
+  expect(merged).toHaveLength(0);
+  expect(made.gitlab.seen("PUT", /\/merge$/)).toHaveLength(0);
+  expect(open).toHaveLength(11);
   expect(made.project.mrs.get(4)?.description).toStartWith("## Why");
 
   // Promoted: a merge on the forge starts the cleanup.

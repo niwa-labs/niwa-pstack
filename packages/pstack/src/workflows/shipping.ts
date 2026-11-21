@@ -23,7 +23,7 @@ export default workflow(
           z.strictObject({
             number: z.number().int().positive(),
             nodes: z.array(z.string().min(1)).min(1),
-            author: z.strictObject({ kind: z.literal("session"), harness: z.string(), id: z.string() }).describe("The session that wrote the patch"),
+            author: z.strictObject({ kind: z.literal("session"), harness: z.string(), id: z.string() }).optional().describe("Optional assertion of the author in the lane receipt"),
           }),
         )
         .min(1)
@@ -36,6 +36,7 @@ export default workflow(
       "git.worktree.get",
       "git.worktree.remove",
       "proc.run@{worktrees}/*",
+      "pstack.pr.binding",
       "forge.pr.merge@{repo.host}/{repo.path}/pr/*",
       "forge.pr.read@{repo.host}/{repo.path}",
       "forge.pipeline.read@{repo.host}/{repo.path}",
@@ -52,7 +53,7 @@ export default workflow(
     const wt = await makeWorktree({ repo: repo.local, base, description: "Read the stack against trunk" });
     const done: Shipped[] = [];
     for (const one of prs) {
-      const landed = await ship(`pr-${String(one.number)}`, { repo, number: one.number, author: one.author, plan, nodes: one.nodes, base, cwd: wt.path, method });
+      const landed = await ship(`pr-${String(one.number)}`, { repo, number: one.number, author: one.author, plan, nodes: one.nodes, cwd: wt.path, method });
       done.push(landed);
       if (landed.outcome !== "merged") break;
     }

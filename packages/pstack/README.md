@@ -97,9 +97,13 @@ A pull request lands only when all of these hold at its current head:
 - the pipeline of the head is green;
 - the merge result of the pair the forge would merge now is green and attested with that pair of commits.
 
-Trunk that conflicts with the patch stops the landing before anything is asked of the forge. Any other move of trunk
-(a file both sides changed, a lockfile, a manifest, a file that names a patched one) is what the merge result tests.
-The merge is made at the head the policy was checked on, and is read back from the forge.
+An authoring lane records its native author session and registered worktree for the exact repository, pull request
+and head. Standalone shipping reads that receipt. A missing or ambiguous receipt, or an explicit author that
+differs from it, stops shipping until the head has verified provenance.
+
+Shipping reads the target branch tip from the forge and checks the latest pipelines of this merge request against
+both commit IDs. GitLab's merge endpoint can condition on the source commit only. On GitLab even a verified pair
+remains open for a separate landing decision. A capable forge must enforce both commit IDs in the merge operation.
 
 ## Candidates and the suite
 

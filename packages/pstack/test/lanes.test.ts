@@ -209,3 +209,75 @@ test("a head the forge reports red after it was verified green does not land", a
   expect(shipped.prs[0].missing.map((one: { name: string }) => one.name)).toEqual(["head-ci"]);
   expect(made.project.mrs.get(bottom.pr)?.state).toBe("opened");
 }, 240_000);
+
+test("standalone shipping binds the author, MR and live target and refuses before merge", async () => {
+  const made = await pstackHost({ onlyBuiltins: ["multi-phase-plan", "autopilot-stack", "shipping"] });
+  hosts.push(made);
+  made.harnesses.answers = defaultAnswers(made);
+  await registeredAll(made.host, 3);
+  const planned = await plannedWithGo(made, "standalone");
+  const stacked = await run(made, "autopilot-stack", { plan: planned.plan.of });
+  const [bottom] = stacked.nodes as Array<{ node: string; pr: number; head: string; author: { kind: "session"; id: string; harness: string } }>;
+  if (!bottom) throw new Error("no PR built");
+  const repo = { host: made.fixture.repo.host, path: made.fixture.repo.path };
+  const key = { repo, number: bottom.pr, head: bottom.head };
+  const receipt = await made.host.call("pstack.pr.binding" as never, key as never) as { binding?: { author: unknown; run: string } };
+  expect(receipt.binding?.author).toEqual(bottom.author);
+  const rows = await recordsOf(made.host, "pstack.pr.bound");
+  expect(await made.host.call("pstack.pr.binding" as never, { ...key, before: rows[0]?.seq } as never)).toEqual({});
+  const bound = rows[0]!.data as { run: string; worktree: object };
+  await expect(made.host.call("pstack.pr.bind" as never, { ...key, author: bottom.author, worktree: bound.worktree } as never))
+    .rejects.toThrow("only a registered pstack authoring lane");
+
+  const ship = async (author?: typeof bottom.author) => {
+    const shipped = await run(made, "shipping", { plan: planned.plan.of, prs: [{ number: bottom.pr, nodes: [bottom.node], author }] });
+    expect(shipped.status).toBe("stopped");
+    return shipped.prs[0].missing.map((one: { name: string }) => one.name);
+  };
+  const subject = `${repo.host}/${repo.path}/pr/${bottom.pr}`;
+  for (const name of ["gates", "live"]) {
+    await made.attestAs(bottom.author.id, subject, { kind: "verdict", name, outcome: "pass", sha: bottom.head });
+  }
+  expect(await ship({ ...bottom.author, id: "another-session" })).toEqual(["author"]);
+  expect(await ship()).toEqual(["land"]);
+
+  const previous = made.project.branches.get("main")!;
+  made.project.branches.set("main", bottom.head);
+  expect(await ship()).toEqual(["merge-result"]);
+  made.project.branches.set("main", previous);
+  const own = made.project.pipelines.find(one => one.ref === `refs/merge-requests/${bottom.pr}/merge`)!;
+  own.status = "failed";
+  made.gitlab.mr(made.project, { iid: 987, source_branch: "other", sha: bottom.head });
+  made.gitlab.pipeline(made.project, { ref: "refs/merge-requests/987/merge", sha: own.sha, status: "success", source: "merge_request_event" });
+  expect(await ship()).toEqual(["merge-result"]);
+  const mr = made.project.mrs.get(bottom.pr)!;
+  mr.sha = previous;
+  expect(await ship()).toEqual(["author"]);
+  expect(made.gitlab.seen("PUT", /\/merge$/)).toHaveLength(0);
+}, 150_000);
+
+test("the author's own verdicts on a bound head cannot satisfy standalone shipping", async () => {
+  const made = await pstackHost({ onlyBuiltins: ["multi-phase-plan", "autopilot-stack", "shipping"] });
+  hosts.push(made);
+  made.harnesses.answers = defaultAnswers(made);
+  for (const name of ["gates", "live"]) {
+    made.harnesses.answers[`*:verify-${name}`] = async call => {
+      const asked = claimAsked(call.prompt);
+      const author = [...made.harnesses.sessions.entries()].find(([, one]) => one.harness === "author" && one.cwd === call.cwd);
+      if (!author) throw new Error("no author for this checkout");
+      await made.attestAs(author[0].split(" ")[1]!, asked.subject, { kind: "verdict", name, outcome: "pass", sha: asked.sha });
+      return { outcome: "pass", evidence: "only the author's verdict" };
+    };
+  }
+  await registeredAll(made.host, 3);
+  const planned = await plannedWithGo(made, "self-verdict");
+  const stacked = await run(made, "autopilot-stack", { plan: planned.plan.of });
+  const [bottom] = stacked.nodes;
+  expect(bottom.verified).toBe(false);
+  const prs = [{ number: bottom.pr, nodes: [bottom.node] }];
+  const shipped = await run(made, "shipping", { plan: planned.plan.of, prs });
+  expect(shipped.prs[0].missing.map((one: { name: string }) => one.name)).toEqual(["gates", "live"]);
+  const forged = await run(made, "shipping", { plan: planned.plan.of, prs: [{ ...prs[0], author: { ...bottom.author, id: "another-session" } }] });
+  expect(forged.prs[0].missing.map((one: { name: string }) => one.name)).toEqual(["author"]);
+  expect(made.gitlab.seen("PUT", /\/merge$/)).toHaveLength(0);
+}, 150_000);

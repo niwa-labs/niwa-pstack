@@ -111,16 +111,16 @@ export const SCENARIOS: readonly Scenario[] = [
   },
   {
     builtin: "autopilot-full",
-    name: "carries a plan with the go to merged pull requests",
+    name: "checks the landing precondition for every verified plan node",
     args: async (f, context) => {
       await goOn("parallel", f, written(context, "parallel"));
       return { ...playbook(f, "Carry out the plan."), plan: written(context, "parallel").plan.of };
     },
     check: answered("done", (value, context) => {
-      const nodes = value["nodes"] as Array<{ node: string; pr: number; head: string; landed?: { outcome: string } }>;
-      const unlanded = nodes.filter((one) => one.landed?.outcome !== "merged");
-      context["landed"] = nodes.filter((one) => one.landed?.outcome === "merged");
-      return nodes.length > 0 && unlanded.length === 0 ? null : `not landed: ${JSON.stringify(unlanded).slice(0, 500)}`;
+      const nodes = value["nodes"] as Array<{ node: string; pr: number; head: string; verified: boolean; go: boolean; landed?: { outcome: string; missing?: Array<{ name: string; why: string }> } }>;
+      context["landed"] = nodes.filter(one => one.landed?.outcome === "merged");
+      context["verifiedForCleanup"] = nodes.filter(one => one.verified && one.go);
+      return nodes.length > 0 && nodes.every(one => one.verified && one.go && gatedLanding(one.landed)) ? null : "an unverified pair reached landing, or a verified pair failed for an unexpected reason";
     }),
   },
   {
@@ -148,7 +148,7 @@ export const SCENARIOS: readonly Scenario[] = [
   },
   {
     builtin: "shipping",
-    name: "lands the bottom of a verified stack once it has the go",
+    name: "stops before landing a stack on a forge without a target precondition",
     args: async (f, context) => {
       const plan = written(context, "stack");
       await goOn("stack", f, plan);
@@ -156,7 +156,7 @@ export const SCENARIOS: readonly Scenario[] = [
       if (bottom === undefined) throw new Error("no stack was verified by an earlier scenario");
       return { ...playbook(f, "Land the bottom of the stack."), plan: plan.plan.of, prs: [{ number: bottom.pr, nodes: [bottom.node], author: bottom.author }] };
     },
-    check: answered("landed"),
+    check: answered("stopped", value => gatedLanding(value["prs"]?.[0]) ? null : "expected refusal of an unconditioned merge"),
   },
   {
     builtin: "worktree-cleanup",
@@ -349,4 +349,9 @@ function top(context: Context): { pr: number; branch: string; worktree: string }
   const found = stacked?.at(-1);
   if (found === undefined) throw new Error("no stack was verified by an earlier scenario");
   return found;
+}
+
+function gatedLanding(result?: { outcome: string; missing?: Array<{ name: string; why: string }> }): boolean {
+  return result?.outcome === "refused" && result.missing?.length === 1 && result.missing[0]?.name === "land"
+    && result.missing[0].why === "forge cannot condition a merge on the target commit";
 }

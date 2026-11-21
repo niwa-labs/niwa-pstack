@@ -32,7 +32,9 @@ export default workflow(
     ]),
     uses: [
       "workflow.builtin.promote",
+      "pstack.pr.binding",
       "forge.pr.merge@{repo.host}/{repo.path}/pr/*",
+      "pstack.pr.bind",
       "forge.pr.ensure@{repo.host}/{repo.path}/pr/*",
       "proc.run@{worktrees}/*",
       "git.*@{repo.local}",

@@ -52,6 +52,8 @@ export default workflow(
       "session.end",
       "git.worktree.create",
       "proc.run@{worktrees}/*",
+      "pstack.pr.bind",
+      "pstack.pr.binding",
       "forge.pr.ensure@{repo.host}/{repo.path}/pr/*",
       "forge.pr.read@{repo.host}/{repo.path}",
       "forge.pipeline.read@{repo.host}/{repo.path}",
@@ -77,8 +79,13 @@ export default workflow(
         if (one.patchKept && upper !== undefined) {
           const subject = prSubject(repo, one.pr.number);
           const read = (await api().call("forge.pr.read", { repo: target, number: one.pr.number }, { label: `old-${String(index)}` })) as { head: string };
+          const { binding } = await api().call("pstack.pr.binding", { repo: target, number: one.pr.number, head: read.head }, { label: `receipt-${index}` }) as { binding?: { author: { harness: string; id: string; kind: "session" } } };
+          if (!binding || binding.author.harness !== upper.author.harness || binding.author.id !== upper.author.id) {
+            prs.push({ pr: one.pr.number, head: one.head, patchKept: one.patchKept, carried: [] });
+            continue;
+          }
           for (const name of VERDICTS) {
-            const had = (await api().call("evidence.covers", { requirement: { kind: "verdict", subject, name, sha: read.head, notBy: [upper.author] } }, { label: `had-${String(index)}-${name}` })) as { covered: boolean };
+            const had = (await api().call("evidence.covers", { requirement: { kind: "verdict", subject, name, sha: read.head, notBy: [binding.author] } }, { label: `had-${String(index)}-${name}` })) as { covered: boolean };
             if (!had.covered) continue;
             // The same patch on a new base: the verdict on it carries over to the new head.
             await api().call("evidence.attest", { subject, claim: { kind: "verdict", name, outcome: "pass", sha: one.head } }, { label: `carry-${String(index)}-${name}` });

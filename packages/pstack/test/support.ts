@@ -13,8 +13,8 @@ import type { Caller } from "@niwa-labs/core";
 import { evidence } from "@niwa-labs/evidence";
 import { forge, secret } from "@niwa-labs/forge";
 import { plan } from "@niwa-labs/plan";
-import { AGENT } from "@niwa-labs/plugin";
-import type { AgentOffer, CallerBinding, Plugin } from "@niwa-labs/plugin";
+import { AGENT, BUILTIN_WORKFLOW } from "@niwa-labs/plugin";
+import type { AgentOffer, BuiltinWorkflow, CallerBinding, Plugin } from "@niwa-labs/plugin";
 import { harnessList, sessionAsk, sessionEnd, sessionStart } from "@niwa-labs/sessions/records";
 import { connect, connectAsOwner, createNiwa, eventually, git, plugin, requests, tempDir, timers, workflow } from "@niwa-labs/testing";
 import type { Host } from "@niwa-labs/testing";
@@ -279,8 +279,8 @@ function withCi(gitlab: FakeGitLab, project: FakeProject, repo: string, ci: { he
   return async (url, init) => {
     const answered = await gitlab.fetch(url, init);
     if (init.method === "POST" && /\/merge_requests$/.test(new URL(url).pathname) && answered.status === 201) {
-      const mr = (await answered.clone().json()) as { iid: number; sha: string };
-      const target = gitIn(repo, "rev-parse", "main");
+      const mr = (await answered.clone().json()) as { iid: number; sha: string; target_branch: string };
+      const target = gitIn(repo, "rev-parse", mr.target_branch);
       const merge = sha(`merge-result-${String(mr.iid)}-${mr.sha}`);
       project.commits.set(merge, [target, mr.sha]);
       gitlab.pipeline(project, { sha: mr.sha, ref: `refs/merge-requests/${String(mr.iid)}/head`, status: ci.head, source: "merge_request_event" });
@@ -292,6 +292,8 @@ function withCi(gitlab: FakeGitLab, project: FakeProject, repo: string, ci: { he
 
 /** What a test host is made with. */
 export interface PstackHostOptions {
+  /** Install only these real built-ins ungated, for isolated playbook tests. */
+  readonly onlyBuiltins?: readonly string[];
   /** The binding evidence binds its callers with. Default: pstack's, over the fake sessions. */
   readonly bind?: CallerBinding;
   /** Benny: on unless `false`. */
@@ -325,6 +327,7 @@ export async function pstackHost(options: PstackHostOptions = {}): Promise<Pstac
 
   const gitlab = new FakeGitLab();
   const project = gitlab.project(42, PROJECT);
+  project.branches.set("main", gitIn(repo, "rev-parse", "main"));
   const token = join(home, "secrets", "GITLAB_TOKEN");
   writeFileSync(token, `${gitlab.token}\n`);
   chmodSync(token, 0o600);
@@ -336,6 +339,15 @@ export async function pstackHost(options: PstackHostOptions = {}): Promise<Pstac
   const ports = fakePorts(options.withoutPorts ?? []);
   const ci = { head: options.ci?.head ?? "success", mergeResult: options.ci?.mergeResult ?? "success" };
   const host = createNiwa({ home });
+  const pstack = pstackPlugin({ roles: options.roles ?? ROLES, forges: [FORGE_HOST], ...(options.benny === false ? {} : { benny: { repo: { host: FORGE_HOST, path: PROJECT, local: repo } } }) });
+  if (options.onlyBuiltins) {
+    const setup = pstack.setup;
+    pstack.setup = api => setup({ ...api, offer(key, value) {
+      if (key.name !== BUILTIN_WORKFLOW.name) return api.offer(key, value);
+      const builtin = value as BuiltinWorkflow;
+      if (options.onlyBuiltins?.includes(builtin.name)) api.offer(BUILTIN_WORKFLOW, { ...builtin, gated: false });
+    } });
+  }
   host.use(
     requests(),
     timers([]),
@@ -362,7 +374,7 @@ export async function pstackHost(options: PstackHostOptions = {}): Promise<Pstac
     plan(),
     ...(options.plugins ?? []),
     ...(options.benny === false ? [] : ports.plugins),
-    pstackPlugin({ roles: options.roles ?? ROLES, forges: [FORGE_HOST], ...(options.benny === false ? {} : { benny: { repo: { host: FORGE_HOST, path: PROJECT, local: repo } } }) }),
+    pstack,
     // The agents module reads the agents a plugin offers; this one only keeps them.
     plugin("agents", (api) => {
       offeredAgents.push(...api.offers(AGENT).map((one) => one.value));

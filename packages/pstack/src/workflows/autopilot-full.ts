@@ -39,7 +39,9 @@ export default workflow(
       "session.end",
       "git.worktree.create",
       "proc.run@{worktrees}/*",
+      "pstack.pr.bind",
       "forge.pr.ensure@{repo.host}/{repo.path}/pr/*",
+      "pstack.pr.binding",
       "forge.pr.merge@{repo.host}/{repo.path}/pr/*",
       "forge.pr.read@{repo.host}/{repo.path}",
       "forge.pipeline.read@{repo.host}/{repo.path}",
@@ -80,7 +82,7 @@ export default workflow(
         rows.push({ node: node.id, pr: done.pr.number, head: done.pr.head, verified: done.verified, go });
         continue;
       }
-      const landed = await ship(`land-${node.id}`, { repo, number: done.pr.number, author: done.built.author, plan: of, nodes: [node.id], base, cwd: done.built.wt.path, method });
+      const landed = await ship(`land-${node.id}`, { repo, number: done.pr.number, author: done.built.author, plan: of, nodes: [node.id], cwd: done.built.wt.path, method });
       rows.push({ node: node.id, pr: done.pr.number, head: done.pr.head, verified: true, go, landed });
     }
     return { status: "done" as const, nodes: rows.map((row) => ({ ...row, ...(row.landed === undefined ? {} : { landed: row.landed as never }) })) };
