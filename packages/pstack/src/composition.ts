@@ -42,6 +42,8 @@ export const PSTACK_NEEDS = {
   git: "@niwa-labs/git",
   /** The workflow module, after pstack: the entry, the playbooks and the suite are its built-ins. */
   workflow: "@niwa-labs/workflow",
+  /** With `benny`: plugins of the owner's that offer his three ports, before pstack (`benny.ports`, or installed by the host). */
+  bennyPorts: "plugins that offer the issue tracker, report channel and product control ports of Benny",
 } as const;
 
 /** pstack's plugins, to install after the sessions and git modules and before the workflow module. */
@@ -55,6 +57,8 @@ export function pstack(options: PstackCompositionOptions): Plugin[] {
     evidence({ bind }),
     watch(watchOptions ?? {}),
     plan(),
+    // The plugins that provide Benny's ports come before pstack, which reads what they offer when it is installed.
+    ...(own.benny?.ports ?? []),
     pstackPlugin({ ...own, forges: forgeOptions.servers.map((server) => server.host) }),
   ];
 }

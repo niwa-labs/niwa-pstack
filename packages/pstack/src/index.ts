@@ -11,6 +11,30 @@ export { AuthorRefusal, authorLaunch } from "./author.ts";
 export type { AuthorRefusalCode } from "./author.ts";
 export { BENNY, ENTRY, GATED, PLAYBOOKS, SUITE, SUITE_BUILTIN, SYNC, SYNC_BUILTIN, UNGATED, gatedOf, scriptOf } from "./catalog.ts";
 export type { Builtin } from "./catalog.ts";
+export {
+  BENNY_CHANNEL,
+  BENNY_CONTROL,
+  BENNY_PORTS,
+  BENNY_TRACKER,
+  CHANNEL_ACTIONS,
+  CONTROL_ACTIONS,
+  TRACKER_ACTIONS,
+  TrackerIssue,
+  bennyChannelNotify,
+  bennyChannelReply,
+  bennyControlBringUp,
+  bennyControlCapabilities,
+  bennyControlCleanup,
+  bennyControlDrive,
+  bennyControlInspect,
+  bennyControlRecord,
+  bennyControlScreenshot,
+  bennyTrackerComment,
+  bennyTrackerCreate,
+  bennyTrackerFind,
+  bennyTrackerLinkPr,
+} from "./ports.ts";
+export type { PortOffer } from "./ports.ts";
 export { pstackPlugin } from "./plugin.ts";
 export type { BennyOptions, PstackOptions } from "./plugin.ts";
 export { BennyReported, SessionAddress, bennyReport, pstackAuthorStart, pstackRoles } from "./records.ts";

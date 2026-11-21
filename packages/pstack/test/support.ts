@@ -23,6 +23,8 @@ import { addressingOf } from "../src/binding.ts";
 import type { Binding } from "../src/binding.ts";
 import { pstackPlugin } from "../src/plugin.ts";
 import type { RolesInput } from "../src/roles.ts";
+import { fakePorts } from "./ports.ts";
+import type { FakePorts } from "./ports.ts";
 
 process.env.GIT_CONFIG_GLOBAL = "/dev/null";
 process.env.GIT_CONFIG_NOSYSTEM = "1";
@@ -107,6 +109,8 @@ export interface PstackHost {
   agents: AgentOffer[];
   /** How the pipelines of the next pull requests end; a test may change it as it goes. */
   ci: { head: string; mergeResult: string };
+  /** The fake providers of Benny's ports, and what they were asked. */
+  ports: FakePorts;
   /** The fixture a run of the suite or the entry is given. */
   fixture: { repo: { host: string; path: string; local: string }; worktrees: string; base: string };
   /** Call an action as the owner, from the owner's own client. */
@@ -241,6 +245,8 @@ export interface PstackHostOptions {
   readonly bind?: CallerBinding;
   /** Benny: on unless `false`. */
   readonly benny?: false;
+  /** The providers of Benny's ports that are left out, as a host that lacks them would be. */
+  readonly withoutPorts?: ReadonlyArray<"tracker" | "channel" | "control">;
   /** How the pipelines a new pull request gets end: its head's and its merge result's. Default: both succeed. */
   readonly ci?: { readonly head?: string; readonly mergeResult?: string };
   /** More plugins, installed before the workflow module. */
@@ -274,6 +280,7 @@ export async function pstackHost(options: PstackHostOptions = {}): Promise<Pstac
   const agents = fakeAgents(home, harnesses);
   const sessions = fakeSessions(home, harnesses);
   const offeredAgents: AgentOffer[] = [];
+  const ports = fakePorts(options.withoutPorts ?? []);
   const ci = { head: options.ci?.head ?? "success", mergeResult: options.ci?.mergeResult ?? "success" };
   const host = createNiwa({ home });
   host.use(
@@ -289,6 +296,7 @@ export async function pstackHost(options: PstackHostOptions = {}): Promise<Pstac
     evidence({ bind: options.bind ?? addressingOf([sessions]) }),
     plan(),
     ...(options.plugins ?? []),
+    ...(options.benny === false ? [] : ports.plugins),
     pstackPlugin({ roles: ROLES, forges: [FORGE_HOST], ...(options.benny === false ? {} : { benny: { repo: { host: FORGE_HOST, path: PROJECT, local: repo } } }) }),
     // The agents module reads the agents a plugin offers; this one only keeps them.
     plugin("agents", (api) => {
@@ -307,6 +315,7 @@ export async function pstackHost(options: PstackHostOptions = {}): Promise<Pstac
     gitlab,
     project,
     harnesses,
+    ports,
     agents: offeredAgents,
     ci,
     fixture: { repo: { host: FORGE_HOST, path: PROJECT, local: repo }, worktrees, base: "main" },
