@@ -6,7 +6,7 @@ import { afterEach, expect, test } from "bun:test";
 
 import { eventually } from "@niwa-labs/testing";
 
-import { BENNY, gatedOf } from "../src/catalog.ts";
+import { BENNY, UNGATED, gatedOf } from "../src/catalog.ts";
 import { builtins, defaultAnswers, pstackHost, recordsOf, registeredAll } from "./support.ts";
 import type { PstackHost } from "./support.ts";
 
@@ -19,7 +19,7 @@ async function served(benny = true): Promise<PstackHost> {
   const made = await pstackHost(benny ? {} : { benny: false });
   hosts.push(made);
   made.harnesses.answers = defaultAnswers(made);
-  await registeredAll(made.host, gatedOf(benny).length + 1);
+  await registeredAll(made.host, gatedOf(benny).length + UNGATED.length);
   return made;
 }
 

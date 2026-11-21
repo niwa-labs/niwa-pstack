@@ -1,6 +1,6 @@
 /**
- * The pstack plugin: it offers the entry, the playbooks and the suite to the workflow module, tells its scripts the
- * roles the owner gave it, and starts the author's sessions in their box.
+ * The pstack plugin: it offers the entry, the playbooks, the suite and the upstream sync to the workflow module,
+ * tells its scripts the roles the owner gave it, and starts the author's sessions in their box.
  */
 
 import { action } from "@niwa-labs/core";
@@ -9,7 +9,7 @@ import type { Plugin } from "@niwa-labs/plugin";
 import { sessionStart } from "@niwa-labs/sessions/records";
 
 import { authorLaunch, worktreesOf } from "./author.ts";
-import { SUITE_BUILTIN, gatedOf, scriptOf } from "./catalog.ts";
+import { UNGATED, gatedOf, scriptOf } from "./catalog.ts";
 import { BennyReported, bennyReport, pstackAuthorStart, pstackRoles } from "./records.ts";
 import { Roles } from "./roles.ts";
 import type { RolesInput } from "./roles.ts";
@@ -50,7 +50,7 @@ export function pstackPlugin(options: PstackOptions): Plugin {
     for (const one of gatedOf(options.benny !== undefined)) {
       api.offer(BUILTIN_WORKFLOW, { name: one.name, file: scriptOf(one.name), description: one.description, gated: true, ...(one.triggers === undefined ? {} : { triggers: one.triggers }) });
     }
-    api.offer(BUILTIN_WORKFLOW, { name: SUITE_BUILTIN.name, file: scriptOf(SUITE_BUILTIN.name), description: SUITE_BUILTIN.description });
+    for (const one of UNGATED) api.offer(BUILTIN_WORKFLOW, { name: one.name, file: scriptOf(one.name), description: one.description });
     api.action(action(pstackRoles, { recovery: "repeat", effect: "read", world: "niwa", run: () => roles }));
     const benny = options.benny;
     if (benny !== undefined) {

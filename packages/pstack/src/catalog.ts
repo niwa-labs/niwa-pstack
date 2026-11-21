@@ -69,5 +69,17 @@ export const GATED: readonly Builtin[] = [{ name: ENTRY, description: "Pick the 
 /** The suite: it is what promotes, so it is not gated. */
 export const SUITE_BUILTIN: Builtin = { name: SUITE, description: "Run the scenarios on candidate playbooks and promote them" };
 
+/** The name of the upstream sync. */
+export const SYNC = "upstream-sync";
+
+/**
+ * The upstream sync: the owner starts it on a checkout of upstream, and it leaves commits on a branch. It is not
+ * gated: it changes no host, and the workflows its commits change come in as candidates and go through the suite.
+ */
+export const SYNC_BUILTIN: Builtin = { name: SYNC, description: "Carry the upstream map to a new snapshot of upstream" };
+
+/** The built-ins that are not gated. */
+export const UNGATED: readonly Builtin[] = [SUITE_BUILTIN, SYNC_BUILTIN];
+
 /** The gated built-ins a pstack plugin offers: Benny's too when he is enabled. */
 export const gatedOf = (benny: boolean): readonly Builtin[] => (benny ? [...GATED, ...BENNY] : GATED);

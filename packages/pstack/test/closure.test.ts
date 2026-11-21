@@ -8,7 +8,7 @@ import { dirname, resolve } from "node:path";
 
 import * as ts from "typescript";
 
-import { GATED, SUITE_BUILTIN, scriptOf } from "../src/catalog.ts";
+import { GATED, UNGATED, scriptOf } from "../src/catalog.ts";
 
 const transpiler = new Bun.Transpiler({ loader: "tsx" });
 
@@ -37,7 +37,7 @@ function reached(entry: string, all: boolean): Set<string> {
 }
 
 test("every local file a built-in names is stored with it", () => {
-  for (const { name } of [...GATED, SUITE_BUILTIN]) {
+  for (const { name } of [...GATED, ...UNGATED]) {
     const stored = reached(scriptOf(name), false);
     const named = [...reached(scriptOf(name), true)].filter((file) => !stored.has(file));
     expect({ name, missing: named }).toEqual({ name, missing: [] });

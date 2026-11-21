@@ -9,7 +9,7 @@ export { addressingOf } from "./binding.ts";
 export type { Binding } from "./binding.ts";
 export { AuthorRefusal, authorLaunch } from "./author.ts";
 export type { AuthorRefusalCode } from "./author.ts";
-export { BENNY, ENTRY, GATED, PLAYBOOKS, SUITE, SUITE_BUILTIN, gatedOf, scriptOf } from "./catalog.ts";
+export { BENNY, ENTRY, GATED, PLAYBOOKS, SUITE, SUITE_BUILTIN, SYNC, SYNC_BUILTIN, UNGATED, gatedOf, scriptOf } from "./catalog.ts";
 export type { Builtin } from "./catalog.ts";
 export { pstackPlugin } from "./plugin.ts";
 export type { BennyOptions, PstackOptions } from "./plugin.ts";

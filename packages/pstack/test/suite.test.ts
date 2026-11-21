@@ -7,7 +7,7 @@ import { afterEach, expect, test } from "bun:test";
 import { PrMerged } from "@niwa-labs/forge/records";
 import { eventually } from "@niwa-labs/testing";
 
-import { gatedOf } from "../src/catalog.ts";
+import { UNGATED, gatedOf } from "../src/catalog.ts";
 import { builtins, defaultAnswers, pstackHost, recordsOf, registeredAll, syncErrors } from "./support.ts";
 import type { Answers, PstackHost } from "./support.ts";
 
@@ -20,7 +20,7 @@ async function served(change: (answers: Answers) => Answers = (answers) => answe
   const made = await pstackHost();
   made.harnesses.answers = change(defaultAnswers(made));
   hosts.push(made);
-  await registeredAll(made.host, gatedOf(true).length + 1);
+  await registeredAll(made.host, gatedOf(true).length + UNGATED.length);
   return made;
 }
 

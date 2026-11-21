@@ -4,7 +4,7 @@
 
 import { afterEach, expect, test } from "bun:test";
 
-import { gatedOf } from "../src/catalog.ts";
+import { UNGATED, gatedOf } from "../src/catalog.ts";
 import { goDigest, goSubject } from "../src/policy.ts";
 import { builtins, claimAsked, defaultAnswers, pstackHost, recordsOf, registeredAll } from "./support.ts";
 import type { Answers, PstackHost, PstackHostOptions } from "./support.ts";
@@ -19,7 +19,7 @@ async function promoted(options: PstackHostOptions = {}, change: (answers: Answe
   const made = await pstackHost(options);
   hosts.push(made);
   made.harnesses.answers = defaultAnswers(made);
-  await registeredAll(made.host, gatedOf(true).length + 1);
+  await registeredAll(made.host, gatedOf(true).length + UNGATED.length);
   const all = await builtins(made.host);
   const suite = (await made.host.call("workflow.start" as never, { id: all["suite"]?.id, args: made.fixture, wait: true, timeoutMs: 120_000 } as never)) as { outcome?: { result?: { status: string } } };
   if (suite.outcome?.result?.status !== "promoted") throw new Error(`the suite did not promote: ${JSON.stringify(suite).slice(0, 2000)}`);
