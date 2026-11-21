@@ -5,6 +5,7 @@
 import { afterEach, expect, test } from "bun:test";
 
 import { grant, principalOf } from "@niwa-labs/core";
+import { sessionStart } from "@niwa-labs/sessions/records";
 import { connect } from "@niwa-labs/testing";
 
 import { UNGATED, gatedOf } from "../src/catalog.ts";
@@ -95,6 +96,14 @@ test("checked author settings add only the forge network the caller can grant", 
       await client.close();
     }
   }
+}, 30_000);
+
+test("the fake session preserves mixed visible action rules", async () => {
+  const made = await pstackHost({ benny: false });
+  hosts.push(made);
+  const actions = ["harness.list", { do: "session.ask", ask: true as const }];
+  const { ref } = await made.host.call(sessionStart, { harness: "author", prompt: "", visible: { actions } });
+  expect(made.harnesses.lookup(ref)[1].visible).toEqual(actions);
 }, 30_000);
 
 test("a verdict the author attests itself does not verify its pull request", async () => {

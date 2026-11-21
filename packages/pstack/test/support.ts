@@ -62,6 +62,8 @@ export function commitFile(dir: string, file: string, text: string): string {
   return gitIn(dir, "rev-parse", "HEAD");
 }
 
+type VisibleActionRules = NonNullable<z.output<typeof sessionStart.input>["visible"]>["actions"];
+
 /** What a fake harness is asked: by which harness, in which step, where, and what the session may call. */
 export interface HarnessCall {
   harness: string;
@@ -69,7 +71,7 @@ export interface HarnessCall {
   step: string;
   prompt: string;
   cwd?: string;
-  visible?: string[];
+  visible?: VisibleActionRules;
   /** The reference of the conversation answering this turn. */
   ref?: string;
 }
@@ -88,13 +90,13 @@ class Harnesses {
     harness: string;
     ended: boolean;
     cwd?: string;
-    visible?: string[];
+    visible?: VisibleActionRules;
     box: z.output<typeof sessionStart.input>["box"];
     caller: Caller;
   }>();
   answers: Answers = {};
 
-  open(harness: string, caller: Caller, options: { cwd?: string; visible?: string[]; box?: z.output<typeof sessionStart.input>["box"] }) {
+  open(harness: string, caller: Caller, options: { cwd?: string; visible?: VisibleActionRules; box?: z.output<typeof sessionStart.input>["box"] }) {
     const number = this.sessions.size + 1;
     const id = `s-${String(number).padStart(6, "0")}`;
     const ref = `${harness} native-${String(number)}`;
