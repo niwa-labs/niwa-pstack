@@ -109,6 +109,26 @@ describe("check-boundaries", () => {
     expect(rules([rin])).toEqual([]);
   });
 
+  test("lets rin read base records, arm a timer and offer a cockpit page", () => {
+    const deps = {
+      "@niwa-labs/messages": "*",
+      "@niwa-labs/workflow": "*",
+      "@niwa-labs/timer": "*",
+      "@niwa-labs/cockpit-sdk": "*",
+    };
+    const source = [
+      `import { MessageSent } from "@niwa-labs/messages/records";`,
+      `import { RunFinished } from "@niwa-labs/workflow/records";`,
+      `import { daily } from "@niwa-labs/timer";`,
+    ].join("\n");
+    const cockpit = { "./cockpit": "./src/cockpit/index.tsx" };
+    const rin = pkg("@niwa-labs/rin", source, { deps, exports: cockpit });
+    rin.files.push({ path: "packages/rin/src/cockpit/page.tsx", source: `import { useCall } from "@niwa-labs/cockpit-sdk";` });
+    expect(rules([rin])).toEqual([]);
+    const root = pkg("@niwa-labs/rin", `import { messages } from "@niwa-labs/messages";`, { deps });
+    expect(rules([root])).toEqual(["graph"]);
+  });
+
   test("lets tasks read message records but not the messages plugin itself", () => {
     const deps = { "@niwa-labs/messages": "workspace:*" };
     const ok = pkg("@niwa-labs/tasks", `import type { Message } from "@niwa-labs/messages/records";`, { deps });
@@ -127,6 +147,32 @@ describe("check-boundaries", () => {
       deps: { "@niwa-labs/tasks": "*" },
     });
     expect(rules([tasks])).toContain("graph");
+  });
+
+  test("lets memory read delegate's records and commitments arm timer's, and nothing more of either", () => {
+    const memory = pkg("@niwa-labs/memory", `import type { ContextRequest } from "@niwa-labs/delegate/records";`, {
+      deps: { "@niwa-labs/delegate": "*" },
+    });
+    expect(rules([memory])).toEqual([]);
+    const commitments = pkg("@niwa-labs/commitments", `import { TimerFired } from "@niwa-labs/timer/records";`, {
+      deps: { "@niwa-labs/timer": "*" },
+    });
+    expect(rules([commitments])).toEqual([]);
+    const root = pkg("@niwa-labs/memory", `import { delegate } from "@niwa-labs/delegate";`, { deps: { "@niwa-labs/delegate": "*" } });
+    expect(rules([root])).toEqual(["graph", "plugin-entry"]);
+  });
+
+  test("lets workflow carry the script libraries and the builders scripts import by name", () => {
+    const deps = {
+      "@niwa-labs/flow": "workspace:*",
+      "@niwa-labs/flow-code": "workspace:*",
+      "@niwa-labs/flow-eval": "workspace:*",
+      "@niwa-labs/tasks": "workspace:*",
+      "@niwa-labs/history": "workspace:*",
+    };
+    const workflow = pkg("@niwa-labs/workflow", "export {};", { deps });
+    const libraries = ["flow", "flow-code", "flow-eval", "tasks", "history"].map((name) => pkg(`@niwa-labs/${name}`, "export {};"));
+    expect(rules([workflow, ...libraries])).toEqual([]);
   });
 
   test("lets harness kinds use core and sandbox", () => {
