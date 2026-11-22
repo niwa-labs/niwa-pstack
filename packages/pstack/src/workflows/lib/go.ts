@@ -50,8 +50,18 @@ export async function goFound(key: string, opts: { plan: PlanView; nodes: readon
       continue;
     }
     const revision = { of: opts.plan.of, rev: opts.plan.rev };
-    const listed = (await api().call("evidence.list", { subject: goSubject(revision, node) }, { label: `${key}-${node}` })) as { items: Listed[] };
-    const covers = goCovers(listed.items, revision, node, opts.change);
+    const items: Listed[] = [];
+    let after: number | undefined;
+    do {
+      const page = await api().call("evidence.list",
+        { subject: goSubject(revision, node), ...(after === undefined ? {} : { after }) },
+        { label: `${key}-${node}-${after ?? "start"}` },
+      ) as { items: Listed[]; next?: number };
+      items.push(...page.items);
+      if (page.next !== undefined && page.next <= (after ?? -1)) throw new Error("Evidence cursor did not advance");
+      after = page.next;
+    } while (after !== undefined);
+    const covers = goCovers(items, revision, node, opts.change);
     found.push({ name: `go:${node}`, covered: covers.covered, ...(covers.why === undefined ? {} : { why: covers.why }) });
   }
   return found;

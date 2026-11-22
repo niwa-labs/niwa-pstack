@@ -33,7 +33,7 @@ async function promoted(options: PstackHostOptions = {}, change: (answers: Answe
   return made;
 }
 
-/** Run a promoted built-in to its end and answer its result. */
+/** Run a registered built-in to its end and return its result. */
 async function run(made: PstackHost, name: string, args: Record<string, unknown>): Promise<any> {
   const all = await builtins(made.host);
   const ended = (await made.host.call("workflow.start" as never, { id: all[name]?.id, args: { ...made.fixture, task: "Do it.", ...args }, wait: true, timeoutMs: 120_000 } as never)) as {
@@ -63,9 +63,15 @@ test("the author is started boxed to its own worktree and the forge, and a place
   const tools = ["harness.list", "session.start@author", "session.ask", "session.end"];
   for (const one of authors) {
     expect(one.cwd?.startsWith(`${made.worktrees}/`)).toBe(true);
-    expect(one.box).toMatchObject({ allow: expect.arrayContaining(["project"]) });
+    if (one.box && typeof one.box === "object" && "only" in one.box) {
+      expect(one.box).toEqual({ only: ["project", "toolchains"] });
+      const usesHelpers = made.harnesses.of("autonomous-run:attempt").some(call => call.ref === made.harnesses.lookup(one.id)[0]);
+      expect(one.visible).toEqual(usesHelpers ? tools : []);
+    } else {
+      expect(one.box).toMatchObject({ allow: expect.arrayContaining(["project"]) });
+    }
     expect(one.ended).toBe(true);
-    if (one.visible !== undefined) expect(one.visible).toEqual(tools);
+    if (one.visible?.length) expect(one.visible).toEqual(tools);
     expect(one.caller).toMatchObject({ kind: "client", principal: { kind: "run" } });
   }
   const attempts = made.harnesses.of("hillclimb:attempt");
@@ -132,27 +138,46 @@ test("a verdict the author attests itself does not verify its pull request", asy
   expect(attested.some((one) => one.claim.name === "live" && one.author.harness === "author")).toBe(true);
 }, 240_000);
 
+async function redMergeResultHost(): Promise<PstackHost> {
+  const made = await pstackHost({ onlyBuiltins: ["multi-phase-plan", "autopilot-full"], ci: { mergeResult: "failed" } });
+  hosts.push(made);
+  made.harnesses.answers = defaultAnswers(made);
+  await registeredAll(made.host, 2);
+  return made;
+}
+
 test("a merge result that is not green keeps a verified pull request with the go from landing", async () => {
-  const made = await promoted();
-  made.ci.mergeResult = "failed";
+  const made = await redMergeResultHost();
   const planned = await plannedWithGo(made, "red-merge-result");
   const done = await run(made, "autopilot-full", { plan: planned.plan.of });
+  expect(done.nodes.map((node: { node: string }) => node.node)).toEqual(planned.nodes.map(({ id }) => id));
   for (const node of done.nodes as Array<{ verified: boolean; go: boolean; landed: { outcome: string; missing: Array<{ name: string }> } }>) {
-    expect(node).toMatchObject({ verified: true, go: true, landed: { outcome: "refused" } });
+    expect(node).toMatchObject({ verified: true, go: true, gate: { decision: "unchanged" }, landed: { outcome: "refused" } });
     expect(node.landed.missing.map((one) => one.name)).toEqual(["merge-result"]);
   }
   const prs = new Set((done.nodes as Array<{ pr: number }>).map((one) => one.pr));
   expect([...made.project.mrs.values()].filter((mr) => prs.has(mr.iid)).map((mr) => mr.state)).toEqual(["opened", "opened"]);
-}, 240_000);
+  expect(made.gitlab.seen("PUT", /\/merge$/)).toHaveLength(0);
+}, 90_000);
 
 test("the owner's go is asked once, attested per node, and does not cover a revised plan", async () => {
-  const made = await promoted();
+  const made = await pstackHost({ onlyBuiltins: ["multi-phase-plan", "autopilot-full"] });
+  hosts.push(made);
+  made.harnesses.answers = defaultAnswers(made);
+  await registeredAll(made.host, 2);
   const all = await builtins(made.host);
   const { run: started } = (await made.host.call("workflow.start" as never, { id: all["multi-phase-plan"]?.id, args: { ...made.fixture, task: "Do it.", plan: "with-go" } } as never)) as { run: string };
-  await made.answer(["yes"]);
+  await made.answer(started, ["yes"]);
   const ended = (await made.host.call("workflow.wait" as never, { run: started, timeoutMs: 60_000 } as never)) as { outcome?: { result?: any } };
   const planned = ended.outcome?.result as { go: boolean; plan: { of: string; rev: number }; nodes: Array<{ id: string }> };
   expect(planned.go).toBe(true);
+  const requests = (await recordsOf(made.host, "request.created"))
+    .map(({ data }) => data as { id: string; from?: { kind: string; id?: string }; to: { kind: string } })
+    .filter(({ from }) => from?.kind === "client" && from.id === `run:${started}`);
+  expect(requests).toHaveLength(1);
+  expect(requests[0]?.to).toEqual({ kind: "owner" });
+  const answers = (await recordsOf(made.host, "request.answered")).map(({ data }) => data);
+  expect(answers).toContainEqual(expect.objectContaining({ id: requests[0]?.id, by: { kind: "owner" }, answer: { ids: ["yes"] } }));
   const goes = (await recordsOf(made.host, "evidence.attested")).map((one) => one.data as { subject: string; claim: { name: string; sha: string } }).filter((one) => one.claim.name === "go" && one.subject.includes("with-go"));
   const change = `${made.fixture.repo.host}/${made.fixture.repo.path}`;
   expect(goes.map((one) => [one.subject, one.claim.sha])).toEqual(planned.nodes.map((node) => [goSubject(planned.plan, node.id), goDigest(planned.plan, node.id, change)]));
@@ -164,7 +189,7 @@ test("the owner's go is asked once, attested per node, and does not cover a revi
     [false, undefined],
     [false, undefined],
   ]);
-}, 240_000);
+}, 90_000);
 
 /** A merge-result claim of a pull request's selected merge result, as the fake forge has it. */
 function mergeResultClaim(made: PstackHost, number: number, sha: string) {
@@ -175,23 +200,29 @@ function mergeResultClaim(made: PstackHost, number: number, sha: string) {
 }
 
 test("a merge result a verifier attests does not stand in for the red one the forge reports", async () => {
-  const made = await promoted();
-  made.ci.mergeResult = "failed";
+  const made = await redMergeResultHost();
   const planned = await plannedWithGo(made, "forged-merge-result");
   // The verifiers, who are not the authors, also attest a green merge result of the pair the forge selected.
   const verify = made.harnesses.answers["*:verify-gates"];
+  const claims = new Map<number, ReturnType<typeof mergeResultClaim>>();
   made.harnesses.answers["*:verify-gates"] = async (call) => {
     const asked = claimAsked(call.prompt);
     const number = Number(asked.subject.slice(asked.subject.lastIndexOf("/") + 1));
-    await made.attestAs(call.ref?.split(" ")[1] ?? "", asked.subject, mergeResultClaim(made, number, asked.sha));
+    const claim = mergeResultClaim(made, number, asked.sha);
+    await made.attestAs(call.ref?.split(" ")[1] ?? "", asked.subject, claim);
+    claims.set(number, claim);
     return await verify?.(call);
   };
   const done = await run(made, "autopilot-full", { plan: planned.plan.of });
-  for (const node of done.nodes as Array<{ verified: boolean; landed: { outcome: string; missing: Array<{ name: string }> } }>) {
-    expect(node).toMatchObject({ verified: true, landed: { outcome: "refused" } });
+  expect(done.nodes.map((node: { node: string }) => node.node)).toEqual(planned.nodes.map(({ id }) => id));
+  for (const node of done.nodes as Array<{ pr: number; head: string; landed: { outcome: string; missing: Array<{ name: string }> } }>) {
+    expect(node).toMatchObject({ verified: true, go: true, gate: { decision: "unchanged" }, landed: { outcome: "refused" } });
+    expect(claims.get(node.pr)).toMatchObject({ sourceSha: node.head });
     expect(node.landed.missing.map((one) => one.name)).toEqual(["merge-result"]);
+    expect(made.project.mrs.get(node.pr)?.state).toBe("opened");
   }
-}, 240_000);
+  expect(made.gitlab.seen("PUT", /\/merge$/)).toHaveLength(0);
+}, 90_000);
 
 test("a head the forge reports red after it was verified green does not land", async () => {
   const made = await promoted();
@@ -301,19 +332,37 @@ test("a resumed registered lane binds the open PR and its next head under the st
   const planned = await plannedWithGo(made, "resume-receipt");
   const flows = await builtins(made.host);
   const args = { ...made.fixture, task: "Do it.", plan: planned.plan.of };
-  const started = await made.host.call("workflow.start" as never, { id: flows["autopilot-stack"]!.id, args, wait: true, timeoutMs: 8_000 } as never) as { run: string };
+  const timeoutMs = 30_000;
+  const started = await made.host.call("workflow.start" as never, { id: flows["autopilot-stack"]!.id, args, wait: true, timeoutMs } as never) as { run: string };
+  expect(started).toMatchObject({ state: "paused" });
+  const lane = `node-${planned.nodes[0]!.id}`;
+  const from = `@${lane}.owner.label:${lane}-pr-bind`;
+  expect(started).toMatchObject({ reason: expect.stringContaining(from) });
+  expect(started).not.toHaveProperty("waiting");
+  expect((await recordsOf(made.host, "niwa.step.outcome")).map(row => row.data)).toContainEqual(expect.objectContaining({
+    key: from,
+    outcome: { status: "denied", reason: "fixture interruption after PR opened" },
+  }));
   expect(made.project.mrs.size).toBe(1);
   const opened = [...made.project.mrs.values()][0]!;
   expect(await recordsOf(made.host, "pstack.pr.bound")).toHaveLength(0);
   interrupt = false;
-  const from = `label:node-${planned.nodes[0]!.id}-pr-bind`;
   await made.asOwner("workflow.resume", { run: started.run, from });
-  const result = await made.host.call("workflow.wait" as never, { run: started.run, timeoutMs: 8_000 } as never) as { outcome?: { status: string; result: { nodes: Array<{ node: string; pr: number; head: string; author: unknown }> } } };
+  const result = await made.host.call("workflow.wait" as never, { run: started.run, timeoutMs } as never) as { state: string; outcome?: { status: string; result: { nodes: Array<{ node: string; pr: number; head: string; author: unknown }> } } };
+  expect(result.state).toBe("finished");
   expect(result.outcome?.status).toBe("done");
   const nodes = result.outcome!.result.nodes;
+  expect(nodes.map(one => one.node)).toEqual(planned.nodes.map(one => one.id));
   expect(nodes.map(one => one.pr)).toEqual([opened.iid, opened.iid + 1]);
+  expect(nodes[0]!.head).toBe(opened.sha);
   expect(nodes[1]!.head).not.toBe(opened.sha);
   expect(made.gitlab.seen("POST", /\/merge_requests$/)).toHaveLength(2);
+  const settled = (await recordsOf(made.host, "workflow.scope.settled")).map(row => row.data);
+  for (const node of nodes) {
+    const scope = `@node-${node.node}`;
+    expect(settled).toContainEqual(expect.objectContaining({ run: started.run, scope, key: "owner", outcome: "done" }));
+    expect(settled).toContainEqual(expect.objectContaining({ run: started.run, scope, key: "audit", outcome: "cancelled" }));
+  }
   const { host, path } = made.fixture.repo;
   for (const node of nodes) {
     expect(await made.host.call("pstack.pr.binding" as never, { repo: { host, path }, number: node.pr, head: node.head } as never))
@@ -324,11 +373,43 @@ test("a resumed registered lane binds the open PR and its next head under the st
   expect(shipped.prs[0].missing.map((one: { name: string }) => one.name)).toEqual(["gates", "live"]);
 
   // The unarchived source has the same code, name and grants. Its inherited origin must not authorize it.
+  const beforeRevision = (await recordsOf(made.host, "niwa.step.outcome")).at(-1)?.seq ?? 0;
   await made.asOwner("workflow.revise", { run: started.run, file: scriptOf("autopilot-stack"), from });
-  const revised = await made.host.call("workflow.wait" as never, { run: started.run, timeoutMs: 8_000 } as never) as { outcome?: { status: string }; reason?: string };
-  expect(revised).toMatchObject({ state: "paused", reason: `step ${from}: failed` });
+  const revised = await made.host.call("workflow.wait" as never, { run: started.run, timeoutMs } as never) as { outcome?: { status: string }; reason?: string };
+  expect(revised).toMatchObject({ state: "paused" });
   const failures = await recordsOf(made.host, "niwa.step.outcome");
-  expect(failures.some(row => JSON.stringify(row.data).includes("only a registered pstack authoring lane can bind a pull request"))).toBe(true);
+  expect(failures.filter(row => row.seq > beforeRevision).map(row => row.data)).toContainEqual(expect.objectContaining({
+    key: from,
+    outcome: expect.objectContaining({ status: "failed", error: expect.stringContaining("only a registered pstack authoring lane can bind a pull request") }),
+  }));
   expect(await recordsOf(made.host, "pstack.pr.bound")).toHaveLength(2);
   expect(made.gitlab.seen("POST", /\/merge_requests$/)).toHaveLength(2);
+}, 120_000);
+
+test("a registered lane surfaces an unrelated owner refusal while the audit sleeps", async () => {
+  const made = await pstackHost({
+    onlyBuiltins: ["multi-phase-plan", "autopilot-stack"],
+    plugins: [plugin("interrupt-author", api => api.guard(pstackAuthorOptions, () => deny("fixture author grant refused")))],
+  });
+  hosts.push(made);
+  made.harnesses.answers = defaultAnswers(made);
+  await registeredAll(made.host, 2);
+  const planned = await plannedWithGo(made, "author-refused");
+  const flows = await builtins(made.host);
+  const timeoutMs = 30_000;
+  const started = await made.host.call("workflow.start" as never, {
+    id: flows["autopilot-stack"]!.id, args: { ...made.fixture, task: "Do it.", plan: planned.plan.of }, wait: true, timeoutMs,
+  } as never);
+  const lane = `node-${planned.nodes[0]!.id}`;
+  const key = `@${lane}.owner.label:${lane}-build-author-options`;
+  expect(started).toMatchObject({ state: "paused", reason: expect.stringContaining(key) });
+  expect(started).not.toHaveProperty("waiting");
+  expect((await recordsOf(made.host, "timer.sleep.requested")).map(row => row.data)).toContainEqual(expect.objectContaining({
+    key: expect.stringContaining(`@${lane}.audit.label:${lane}-audit-sleep-1`),
+  }));
+  expect((await recordsOf(made.host, "niwa.step.outcome")).map(row => row.data)).toContainEqual(expect.objectContaining({
+    key,
+    outcome: { status: "denied", reason: "fixture author grant refused" },
+  }));
+  expect(made.project.mrs.size).toBe(0);
 }, 60_000);

@@ -161,7 +161,8 @@ export default workflow(
     for (const [index, one] of asked.entries()) {
       decisions.push({ ...one, answer: await api().ask.text([`The sync of upstream's pstack leaves this to you: ${one.question}`, "", one.why].join("\n"), { label: `decision-${String(index)}` }) });
     }
-    if (decisions.length > 0 && status !== "stalled") {
+    if (decisions.length > 0) {
+      status = "unfinished";
       await work("decided", log.length + 1, ["The owner answered what you left to them. Carry out each answer, and leave nothing of it undone:", ...decisions.map((one) => `- ${one.question}: ${one.answer}`)]);
       summary = await measure("measure-decided");
     }

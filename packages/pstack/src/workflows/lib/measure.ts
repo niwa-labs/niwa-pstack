@@ -22,7 +22,8 @@ export function metricOf(ran: Ran): number | null {
   if (ran.exit !== 0) return null;
   const numbers = ran.out.match(/-?\d+(?:\.\d+)?(?:e[-+]?\d+)?/gi);
   const last = numbers?.at(-1);
-  return last === undefined ? null : Number(last);
+  const value = Number(last);
+  return Number.isFinite(value) ? value : null;
 }
 
 /** Run a measurement in a worktree: its metric. */

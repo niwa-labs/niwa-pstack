@@ -42,6 +42,8 @@ export const PSTACK_NEEDS = {
   sessions: "@niwa-labs/sessions",
   /** The git module, before pstack: the worktrees the lanes work in. */
   git: "@niwa-labs/git",
+  /** History supplies scoped prior sessions and transcript windows for Session pickup. */
+  history: "@niwa-labs/history",
   /** The workflow module, after pstack: the entry, the playbooks and the suite are its built-ins. */
   workflow: "@niwa-labs/workflow",
   /** With `benny`: plugins of the owner's that offer his three ports, before pstack (`benny.ports`, or installed by the host). */

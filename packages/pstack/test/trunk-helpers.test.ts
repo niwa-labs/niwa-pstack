@@ -18,7 +18,7 @@ afterEach(() => {
 const repo = { host: "gitlab.example.com", path: "acme/billing" };
 
 /** Script globals over a forge that answers these pull requests, and a `proc.run` that runs for real. */
-function scriptWith(prs: Record<number, { state?: string; branch: string; base?: string; head: string }>): void {
+function scriptWith(prs: Record<number, { state?: string; branch: string; base?: string; head: string; mergeSha?: string; autoMerge?: boolean }>): void {
   globals.ask = async () => ({});
   globals.session = async () => ({});
   globals.call = async (name: string, input: any) => {
@@ -29,7 +29,7 @@ function scriptWith(prs: Record<number, { state?: string; branch: string; base?:
     if (name === "forge.pr.read") {
       const pr = prs[input.number as number];
       if (pr === undefined) throw new Error(`no pull request ${String(input.number)}`);
-      return { state: pr.state ?? "open", branch: pr.branch, base: pr.base ?? "main", head: pr.head };
+      return { state: "open", base: "main", ...pr };
     }
     throw new Error(`no answer for ${name}`);
   };
@@ -143,7 +143,30 @@ test("a stack whose upper patch conflicts with the new lower head is not carried
   gitIn(dir, "checkout", "-q", "-b", "lower-fixed", lowerOld);
   const lowerNew = commitFile(dir, "src/invoice.ts", "export const invoice = 4;\n");
   gitIn(dir, "checkout", "-q", "--detach", "main");
-  scriptWith({ 1: { branch: "lower-fixed", head: lowerNew }, 2: { branch: "upper", head: upperHead } });
+  scriptWith({ 1: { branch: "lower-fixed", head: lowerNew }, 2: { branch: "upper", base: "lower-fixed", head: upperHead } });
   await expect(restack("r", { lower: { repo, number: 1 }, from: lowerOld, upper: [{ repo, number: 2 }], cwd: dir })).rejects.toThrow("does not rebase onto");
   expect(gitIn(dir, "status", "--porcelain")).toBe("");
+});
+
+test("stack preparation uses the forge merge commit and refuses queued or unrelated children", async () => {
+  const dir = await repository();
+  const lower = branch(dir, "lower", "src/invoice.ts", "export const invoice = 2;\n");
+  gitIn(dir, "checkout", "-q", "-b", "upper", "lower");
+  const upper = commitFile(dir, "src/report.ts", "export const report = 2;\n");
+  branch(dir, "merge-result", "src/invoice.ts", "export const invoice = 2;\n");
+  gitIn(dir, "checkout", "-q", "merge-result");
+  gitIn(dir, "commit", "--amend", "-qm", "Squash merge lower");
+  const merged = gitIn(dir, "rev-parse", "HEAD");
+  gitIn(dir, "checkout", "-q", "main");
+  const opts = { lower: { repo, number: 1 }, from: lower, upper: [{ repo, number: 2 }], cwd: dir, trunk: "main" };
+  const bottom = { state: "merged", branch: "lower", head: lower, mergeSha: merged };
+  scriptWith({ 1: bottom, 2: { branch: "upper", base: "lower", head: upper, autoMerge: true } });
+  await expect(restack("queued", opts)).rejects.toThrow("not an open, unqueued child");
+  scriptWith({ 1: bottom, 2: { branch: "upper", base: "different", head: upper } });
+  await expect(restack("unrelated", opts)).rejects.toThrow("not an open, unqueued child");
+  scriptWith({ 1: bottom, 2: { branch: "upper", base: "lower", head: upper } });
+  const [move] = await restack("ready", opts);
+  expect(move).toMatchObject({ before: upper, expectBase: "lower", targetBase: "main", patchKept: true });
+  expect(gitIn(dir, "rev-parse", `${move?.head}^`)).toBe(merged);
+  expect(gitIn(dir, "rev-parse", "upper")).toBe(upper);
 });

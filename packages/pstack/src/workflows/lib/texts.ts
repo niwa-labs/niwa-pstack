@@ -14,5 +14,5 @@ export interface PlaybookText {
 
 /** The brief of a session: its step, the worker rules, the playbook it works in, and the task. */
 export function brief(tag: string, playbook: PlaybookText, task: string, extra: readonly string[] = []): string {
-  return [tag, "", worker.text.trim(), "", `You work in the ${playbook.title} playbook:`, "", playbook.text.trim(), "", ...extra, ...(extra.length > 0 ? [""] : []), `Task: ${task}`].join("\n");
+  return [tag, "", "Perform only the assigned step. The playbook describes the full workflow. Other seats and the workflow own its other steps. Use only tools available to your seat.", "", ...extra, "", worker.text.trim(), "", `You work in the ${playbook.title} playbook:`, "", playbook.text.trim(), "", `Task: ${task}`].join("\n");
 }

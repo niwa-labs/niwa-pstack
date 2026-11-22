@@ -129,7 +129,7 @@ test("a report whose bug is not reproduced is told to the channel once, and no p
   const made = await served();
   await promote(made);
   made.ports.calls.length = 0;
-  made.harnesses.answers["benny-reproduce:reproduce"] = () => ({ reproduced: false, runs: ["The README says billing."] });
+  made.harnesses.answers["benny-reproduce:reproduce"] = () => ({ kind: "not-reproduced", runs: ["The README says billing."] });
   const before = (await runsOf(made, "benny-reproduce")).length;
   await made.asOwner("benny.report", { report: "The README calls the service payroll.", source: "thread-3" });
   await eventually(async () => (await runsOf(made, "benny-reproduce")).length === before + 1, 60_000, "the bug was not reproduced");

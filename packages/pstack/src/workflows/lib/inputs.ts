@@ -32,3 +32,16 @@ export function playbookInput() {
     base: z.string().min(1).default("main").describe("The trunk the changes land on"),
   });
 }
+
+export function evalId() {
+  return zod().string().regex(/^[a-z][a-z0-9-]{0,30}$/);
+}
+
+/** Variant settings shared by the direct and routed Eval entry points. */
+export function evalVariants() {
+  const z = zod();
+  const name = z.string().min(1);
+  return z.record(evalId(), z.union([name, z.strictObject({
+    harness: name, vendor: name.optional(), model: name.optional(), effort: name.optional(), ref: name.optional(),
+  })]));
+}

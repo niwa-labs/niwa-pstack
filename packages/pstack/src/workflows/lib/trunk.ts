@@ -16,11 +16,12 @@ export interface PrRef {
 
 /** A pull request as `forge.pr.read` answers it, as much as the helpers read. */
 interface ReadPr {
-  state: "open" | "merged" | "closed";
+  state: "open" | "merged" | "closed" | "locked";
   branch: string;
   base: string;
   head: string;
   mergeSha?: string;
+  autoMerge?: boolean;
 }
 
 const readPr = async (key: string, pr: PrRef): Promise<ReadPr> =>
@@ -53,8 +54,11 @@ export async function trunkAffects(key: string, opts: { pr: PrRef; base: string;
 
 /** The patch-id of a range: what stays the same when a patch is carried onto another base unchanged. */
 async function patchId(key: string, cwd: string, from: string, to: string): Promise<string> {
-  const hashed = (await api().call("proc.run", { cmd: ["sh", "-c", 'git diff --binary "$1" "$2" | git patch-id --stable', "patch-id", from, to], cwd, timeout: 60_000 }, { label: key })) as { exit: number; tail: string };
-  if (hashed.exit !== 0) throw new Error(`git patch-id failed: ${hashed.tail.trim().slice(-500)}`);
+  const hashed = (await api().call("proc.run", {
+    cmd: ["bash", "-o", "pipefail", "-c", 'git diff --no-ext-diff --no-textconv --binary "$1" "$2" | git patch-id --stable', "patch-id", from, to],
+    cwd, timeout: 60_000,
+  }, { label: key })) as { exit: number; tail: string; truncated: boolean };
+  if (hashed.exit !== 0 || hashed.truncated) throw new Error(`git patch-id failed: ${hashed.tail.trim().slice(-500)}`);
   return hashed.tail.trim().split(/\s+/)[0] ?? "";
 }
 
@@ -65,17 +69,45 @@ async function patchId(key: string, cwd: string, from: string, to: string): Prom
  * rebased commits are left in the checkout for their authors to publish; a rebase that conflicts is aborted and
  * throws.
  */
-export async function restack(key: string, opts: { lower: PrRef; from: string; upper: PrRef[]; cwd: string }): Promise<Array<{ pr: PrRef; head: string; patchKept: boolean }>> {
+export async function restack(key: string, opts: { lower: PrRef; from: string; upper: PrRef[]; cwd: string; trunk?: string }) {
   const lower = await readPr(`${key}-lower`, opts.lower);
-  const onto = lower.state === "merged" ? await gitOut(`${key}-onto`, opts.cwd, ["rev-parse", lower.base]) : lower.head;
-  const done: Array<{ pr: PrRef; head: string; patchKept: boolean }> = [];
+  if (lower.state !== "open" && lower.state !== "merged") throw new Error("The lower pull request is neither open nor merged");
+  if (lower.state === "merged" && (lower.mergeSha === undefined || (opts.trunk !== undefined && lower.base !== opts.trunk))) {
+    throw new Error("The lower pull request has no confirmed merge into trunk");
+  }
+  const onto = lower.state === "merged" ? lower.mergeSha! : lower.head;
+  const done: Array<{
+    pr: PrRef; before: string; head: string; patchKept: boolean; branch: string; expectBase: string; targetBase: string;
+  }> = [];
+  const seen = new Set([opts.lower.number]);
+  const snapshots: ReadPr[] = [];
+  let parent = lower;
+  let previousHead = opts.from;
+  for (const [index, pr] of opts.upper.entries()) {
+    if (pr.repo.host !== opts.lower.repo.host || pr.repo.path !== opts.lower.repo.path || seen.has(pr.number)) {
+      throw new Error("The stack must use distinct pull requests from one project");
+    }
+    seen.add(pr.number);
+    const upper = await readPr(`${key}-${index}-pr`, pr);
+    const alreadyRetargeted = index === 0 && lower.state === "merged" && upper.base === lower.base;
+    if (upper.state !== "open" || upper.autoMerge || (upper.base !== parent.branch && !alreadyRetargeted)) {
+      throw new Error(`PR ${pr.number} is not an open, unqueued child of ${parent.branch}`);
+    }
+    const ancestor = await gitRun(`${key}-${index}-ancestor`, opts.cwd, ["merge-base", "--is-ancestor", previousHead, upper.head]);
+    if (ancestor.exit !== 0 || previousHead === upper.head) throw new Error(`PR ${pr.number} does not contain a patch above ${previousHead}`);
+    const fork = await gitOut(`${key}-${index}-range`, opts.cwd, ["rev-list", "--merges", `${previousHead}..${upper.head}`]);
+    if (fork !== "") throw new Error(`PR ${pr.number} includes merge commits in the proposed replay range`);
+    snapshots.push(upper);
+    parent = upper;
+    previousHead = upper.head;
+  }
   let base = { from: opts.from, onto };
   for (const [index, pr] of opts.upper.entries()) {
     const step = `${key}-${String(index)}`;
-    const upper = await readPr(`${step}-pr`, pr);
+    const upper = snapshots[index]!;
     // Detached: the branch itself stays checked out in its author's worktree.
     await gitOut(`${step}-checkout`, opts.cwd, ["checkout", "-q", "--detach", upper.head]);
-    const rebased = await gitRun(`${step}-rebase`, opts.cwd, ["rebase", "-q", "--onto", base.onto, base.from]);
+    const rebased = await gitRun(`${step}-rebase`, opts.cwd, ["-c", "rebase.updateRefs=false", "rebase", "-q", "--onto", base.onto, base.from]);
     if (rebased.exit !== 0) {
       await gitRun(`${step}-abort`, opts.cwd, ["rebase", "--abort"]);
       throw new Error(`the pull request ${String(pr.number)} does not rebase onto ${base.onto}: ${rebased.out.trim().slice(-500)}`);
@@ -83,9 +115,20 @@ export async function restack(key: string, opts: { lower: PrRef; from: string; u
     const head = await gitOut(`${step}-head`, opts.cwd, ["rev-parse", "HEAD"]);
     const before = await patchId(`${step}-before`, opts.cwd, base.from, upper.head);
     const after = await patchId(`${step}-after`, opts.cwd, base.onto, head);
-    done.push({ pr, head, patchKept: before === after });
+    done.push({
+      pr, before: upper.head, head, patchKept: before !== "" && before === after,
+      branch: upper.branch, expectBase: upper.base, targetBase: index === 0 && lower.state === "merged" ? lower.base : upper.base,
+    });
     // The next one up was built on this one's old head.
     base = { from: upper.head, onto: head };
+  }
+  for (const [index, pr] of [opts.lower, ...opts.upper].entries()) {
+    const observed = index === 0 ? lower : snapshots[index - 1]!;
+    const latest = await readPr(`${key}-confirm-${index}`, pr);
+    if (latest.head !== observed.head || latest.base !== observed.base || latest.state !== observed.state ||
+        latest.autoMerge !== observed.autoMerge || latest.branch !== observed.branch || latest.mergeSha !== observed.mergeSha) {
+      throw new Error(`PR ${pr.number} moved during stack preparation`);
+    }
   }
   return done;
 }

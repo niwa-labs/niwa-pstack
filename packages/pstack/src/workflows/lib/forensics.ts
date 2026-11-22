@@ -31,7 +31,7 @@ export async function forensics(playbook: PlaybookText, opts: { task: string; re
       ...opts.extra,
     ]),
   );
-  const confirmed = found.hypotheses.some((one) => one.status === "confirmed");
-  const cause = confirmed ? found.cause : null;
+  const [confirmed, ...others] = found.hypotheses.filter((one) => one.status === "confirmed");
+  const cause = confirmed && others.length === 0 && confirmed.evidence.trim() !== "" ? confirmed.claim : null;
   return { status: cause === null ? ("open" as const) : ("found" as const), cause, hypotheses: found.hypotheses };
 }

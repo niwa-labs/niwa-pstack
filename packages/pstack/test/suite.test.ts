@@ -74,7 +74,7 @@ test("the suite tries the set by its versions and promotes the candidates in one
   if (ran.outcome?.status !== "done") console.log(JSON.stringify(ran), (await syncErrors(made.host, "")).join("\n"));
   expect(ran.outcome?.status).toBe("done");
   const failed = (ran.outcome?.result.rows as Array<{ passed: boolean }>).filter((one) => !one.passed);
-  if (failed.length > 0) console.log((await syncErrors(made.host, "")).join("\n"));
+  if (failed.length > 0) console.log(JSON.stringify(failed), (await syncErrors(made.host, "")).join("\n"));
   expect(failed).toEqual([]);
   expect(ran.outcome?.result.status).toBe("promoted");
   // The sync is gated, so the suite tried it: it carried a reworded upstream across and assembled the texts.
@@ -153,7 +153,7 @@ test("a set with a failing scenario is not promoted, and the candidates stay can
   expect((await versionsOf(made, all["entry"]?.id ?? "")).map((one) => one.candidate)).toEqual([true]);
 }, 240_000);
 
-test("the entry holds its rights over the repository as the four target templates", async () => {
+test("the entry holds its rights over the repository and worktrees as scoped target templates", async () => {
   const made = await served();
   const all = await builtins(made.host);
   const registered = (await recordsOf(made.host, "workflow.registered")).map((one) => one.data as { workflow: string; uses: string[] });
@@ -162,6 +162,8 @@ test("the entry holds its rights over the repository as the four target template
     "forge.pr.merge@{repo.host}/{repo.path}/pr/*",
     "forge.pr.ensure@{repo.host}/{repo.path}/pr/*",
     "proc.run@{worktrees}/*",
+    "proc.run@{repo.local}",
+    "proc.run@{worktrees}",
     "git.*@{repo.local}",
   ]);
 }, 60_000);

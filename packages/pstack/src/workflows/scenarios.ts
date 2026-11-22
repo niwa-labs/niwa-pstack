@@ -198,7 +198,10 @@ export const SCENARIOS: readonly Scenario[] = [
   {
     builtin: "opening-a-pr",
     name: "makes the top of the stack ready for review",
-    args: (f, context) => ({ ...playbook(f, "Open the page's pull request."), branch: top(context).branch, number: top(context).pr }),
+    args: (f, context) => {
+      const pr = top(context);
+      return { ...playbook(f, "Open the page's pull request."), base: pr.base, branch: pr.branch, number: pr.pr };
+    },
     check: answered("opened", (value, context) => (value["pr"] === top(context).pr ? null : `opened ${JSON.stringify(value["pr"])}, not the branch's own pull request`)),
   },
   {
@@ -236,7 +239,7 @@ export const SCENARIOS: readonly Scenario[] = [
       builtin,
       name: "carries a change to a verified pull request",
       args: (f) => playbook(f, `A small ${builtin} on the README of the fixture.`),
-      check: answered("verified", (value) => (builtin === "perf-issue" && value["after"] === null ? "the fix was not measured" : null)),
+      check: answered("verified", (value) => (builtin === "perf-issue" && (value["after"] === null || value["met"] !== true) ? "the calibrated fix did not establish its target" : null)),
     }),
   ),
   {
@@ -264,7 +267,13 @@ export const SCENARIOS: readonly Scenario[] = [
       const seats = (await api().call("pstack.roles", {}, { label: "eval-roles" })) as { lead: { harness: string }; reviewer: { harness: string } };
       return { ...playbook(f, "Which seat explains the README better?"), variants: { lead: seats.lead.harness, reviewer: seats.reviewer.harness } };
     },
-    check: answered("judged", (value) => (Object.keys(value["table"] ?? {}).length === 2 ? null : "not every variant was graded")),
+    check: answered("judged", (value) => {
+      const variants = Object.values(value["table"] ?? {}) as Array<Record<string, unknown>>;
+      const errors = (value["cells"] as Array<{ error: string | null }>).flatMap(({ error }) => error === null ? [] : [error]);
+      return value["decision"] !== "incomplete" && variants.length === 2 &&
+        variants.every((scores) => Object.values(scores).length > 0 && Object.values(scores).every((score) => typeof score === "number"))
+        ? null : ["not every variant received a complete independent grade", value["rationale"], ...errors].join(". ");
+    }),
   },
   {
     builtin: "upstream-sync",
@@ -367,8 +376,8 @@ async function seedSync(f: Fixture, context: Context): Promise<unknown> {
 const REPORT = "The README calls the service payroll; it is the billing service.";
 
 /** The top of the stack an earlier scenario verified. */
-function top(context: Context): { pr: number; branch: string; worktree: string } {
-  const stacked = context["stacked"] as Array<{ pr: number; branch: string; worktree: string }> | undefined;
+function top(context: Context): { pr: number; branch: string; base: string; worktree: string } {
+  const stacked = context["stacked"] as Array<{ pr: number; branch: string; base: string; worktree: string }> | undefined;
   const found = stacked?.at(-1);
   if (found === undefined) throw new Error("no stack was verified by an earlier scenario");
   return found;

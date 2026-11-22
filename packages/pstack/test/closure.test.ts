@@ -37,7 +37,7 @@ function reached(entry: string, all: boolean): Set<string> {
 }
 
 test("every local file a built-in names is stored with it", () => {
-  for (const { name } of [...GATED, ...UNGATED]) {
+  for (const { name } of [...GATED, ...UNGATED, ...["entry", "feature", "suite"].map((name) => ({ name: `${name}-with-research` }))]) {
     const stored = reached(scriptOf(name), false);
     const named = [...reached(scriptOf(name), true)].filter((file) => !stored.has(file));
     expect({ name, missing: named }).toEqual({ name, missing: [] });

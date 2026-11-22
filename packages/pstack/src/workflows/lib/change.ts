@@ -14,14 +14,34 @@ import { brief } from "./texts.ts";
 import type { PlaybookText } from "./texts.ts";
 
 /** Ask the lead, read-only in the local clone, to frame the work before anything is built. */
-export async function frame<S extends Z.ZodType>(playbook: PlaybookText, opts: { task: string; repo: Repo; roles: Roles; schema: S; ask: string[] }): Promise<Z.output<S>> {
+export async function frame<S extends Z.ZodType>(playbook: PlaybookText, opts: { task: string; repo: Repo; roles: Roles; schema: S; ask: string[]; label?: string }): Promise<Z.output<S>> {
+  const label = opts.label ?? "frame";
   return await api().ask({
     ...seatOptions(opts.roles.lead),
     mode: "ask",
     cwd: opts.repo.local,
     schema: opts.schema,
-    label: "frame",
-  }, brief(stepTag(playbook.name, "frame"), playbook, opts.task, ["Work read-only: do not change anything.", ...opts.ask]));
+    label,
+  }, brief(stepTag(playbook.name, label), playbook, opts.task, ["Work read-only: do not change anything.", ...opts.ask]));
+}
+
+/** Get separate architectural advice and a lead decision before crossing a boundary. */
+export async function boundaryArchitecture(playbook: PlaybookText, opts: { task: string; repo: Repo; roles: Roles; evidence: string[] }) {
+  const z = zod();
+  const detail = z.string().trim().min(1).max(4000);
+  const proposal = await api().ask({
+    ...seatOptions(opts.roles.reviewer), mode: "ask", cwd: opts.repo.local, schema: z.strictObject({ shape: detail }), label: "architect",
+  }, brief(stepTag(playbook.name, "architect"), playbook, opts.task, [
+    "Act as the delegated architect. Read the affected subsystem and callers. Compare viable shapes, and propose exact types, ownership, file scope and verification. Preserve the framed objective.",
+    ...opts.evidence,
+  ]));
+  return frame(playbook, { ...opts, label: "approve-shape", schema: z.discriminatedUnion("kind", [
+    z.strictObject({ kind: z.literal("proceed"), shape: detail }),
+    z.strictObject({ kind: z.literal("blocked"), why: detail }),
+  ]), ask: [
+    "Own the design choice. Select a boundary shape consistent with the confirmed evidence and describe its exact scope and checks. Block when you cannot justify a change.",
+    ...opts.evidence, JSON.stringify(proposal),
+  ] });
 }
 
 /** A change carried to a pull request, as the change playbooks answer it. */
@@ -52,8 +72,11 @@ export function changedSchema() {
 }
 
 /** Carry one change through an owner lane to a verified pull request. */
-export async function change(key: string, opts: LaneOpts & { task: string; title: string; extra?: string[]; draft?: boolean }): Promise<Changed> {
-  const done = await deliver(key, opts);
+export async function change(key: string, opts: LaneOpts & { task: string; title: string; extra?: string[]; verification?: string[]; liveActions?: readonly string[]; draft?: boolean }): Promise<Changed> {
+  return changeResult(await deliver(key, opts));
+}
+
+export function changeResult(done: Awaited<ReturnType<typeof deliver>>): Changed {
   return {
     status: done.verified ? "verified" : "unverified",
     pr: done.pr.number,

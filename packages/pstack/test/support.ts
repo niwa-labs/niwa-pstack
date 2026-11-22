@@ -3,7 +3,8 @@
 // server behind the forge module, a `proc.run` that runs where it is asked, and fake harnesses that answer each
 // step of a playbook as the test says.
 
-import { chmodSync, mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { z } from "zod";
@@ -16,7 +17,7 @@ import { plan } from "@niwa-labs/plan";
 import { AGENT, BUILTIN_WORKFLOW } from "@niwa-labs/plugin";
 import type { AgentOffer, BuiltinWorkflow, CallerBinding, Plugin } from "@niwa-labs/plugin";
 import { harnessList, sessionAsk, sessionEnd, sessionStart } from "@niwa-labs/sessions/records";
-import { connect, connectAsOwner, createNiwa, eventually, git, plugin, requests, tempDir, timers, workflow } from "@niwa-labs/testing";
+import { connect, connectAsOwner, createNiwa, eventually, git, historyRead, plugin, requests, timers, workflow } from "@niwa-labs/testing";
 import type { Host } from "@niwa-labs/testing";
 
 import { FakeGitLab, sha } from "../node_modules/@niwa-labs/forge/test/fake-gitlab.ts";
@@ -72,6 +73,10 @@ export interface HarnessCall {
   prompt: string;
   cwd?: string;
   visible?: VisibleActionRules;
+  box?: z.output<typeof sessionStart.input>["box"];
+  mode?: string;
+  model?: string;
+  effort?: string;
   /** The reference of the conversation answering this turn. */
   ref?: string;
 }
@@ -144,14 +149,14 @@ export interface PstackHost {
   /** Call an action as the owner, from the owner's own client. */
   asOwner(name: string, input: unknown): Promise<unknown>;
   /** Answer the owner's next open question with these option ids. */
-  answer(ids: string[]): Promise<void>;
+  answer(run: string, ids: string[]): Promise<void>;
   /** Attest as the session whose mark is `mark`, as its own client: what a verifier does with `evidence.attest`. */
   attestAs(mark: string, subject: string, claim: Record<string, unknown>): Promise<void>;
   close(): Promise<void>;
 }
 
 /** A `proc.run` that runs the command in its cwd, with no box: its target is the cwd, as the real action's is. */
-function fakeProc(): Plugin {
+function fakeProc(root: string): Plugin {
   const ref = actionRef("proc.run", {
     description: "Run a command in its cwd.",
     input: z.looseObject({ cmd: z.array(z.string()).min(1), cwd: z.string().min(1) }),
@@ -165,15 +170,23 @@ function fakeProc(): Plugin {
         effect: "write",
         world: "local",
         run: ({ cmd, cwd }) => {
-          const ran = Bun.spawnSync(cmd, { cwd, stdout: "pipe", stderr: "pipe" });
-          const tail = (ran.stdout.toString() + ran.stderr.toString()).slice(-4096);
+          const scratch = mkdtempSync(join(root, "proc-"));
+          const ran = (() => {
+            try {
+              return Bun.spawnSync(cmd, { cwd, env: { ...process.env, TMPDIR: scratch, TMP: scratch, TEMP: scratch }, stdout: "pipe", stderr: "pipe" });
+            } finally {
+              rmSync(scratch, { recursive: true, force: true });
+            }
+          })();
+          const bytes = Buffer.concat([ran.stdout, ran.stderr]);
+          const tail = bytes.subarray(-4096).toString();
           return {
             outcome: "exited",
             exit: ran.exitCode,
             durationMs: 1,
             tail,
-            truncated: false,
-            output: { digest: `sha256:${"0".repeat(64)}`, size: tail.length, type: "text/plain" },
+            truncated: bytes.length > 4096,
+            output: { digest: `sha256:${"0".repeat(64)}`, size: bytes.length, type: "text/plain" },
             box: { sandbox: "none", write: [cwd], net: [] },
           };
         },
@@ -250,21 +263,31 @@ function fakeSessions(harnesses: Harnesses): Binding {
 
 /** The workflow SDK action of each role's harness. */
 function fakeAgents(harnesses: Harnesses) {
-  const names = ["lead", "author", "reviewer", "verifier", "judge"];
+  const names = ["lead", "author", "reviewer", "verifier", "judge", "ncode-flash"];
   return Object.fromEntries(
     names.map((harness) => [
       harness,
       action(`session.start.${harness}`, {
         description: "Open a fake workflow session or answer a one-shot question.",
-        input: z.looseObject({ prompt: z.string().optional(), cwd: z.string().optional(), visible: z.array(z.string()).optional(), box: z.custom<z.output<typeof sessionStart.input>["box"]>().optional() }),
+        input: z.looseObject({
+          prompt: z.string().optional(), cwd: z.string().optional(), visible: z.array(z.string()).optional(),
+          box: z.custom<z.output<typeof sessionStart.input>["box"]>().optional(),
+          mode: z.string().optional(), model: z.string().optional(), effort: z.string().optional(),
+        }),
         output: z.any(),
         recovery: "repeat",
         effect: "write",
         world: "local",
-        async run({ prompt, cwd, visible, box }, { caller }) {
+        async run({ prompt, cwd, visible, box, mode, model, effort }, { caller }) {
           const options = { ...(cwd === undefined ? {} : { cwd }), ...(visible === undefined ? {} : { visible }) };
           if (prompt === undefined) return harnesses.open(harness, caller, { ...options, ...(box === undefined ? {} : { box }) });
-          return await harnesses.answer({ harness, step: stepOf(prompt), prompt, ...options });
+          return await harnesses.answer({
+            harness, step: stepOf(prompt), prompt, ...options,
+            ...(box === undefined ? {} : { box }),
+            ...(mode === undefined ? {} : { mode }),
+            ...(model === undefined ? {} : { model }),
+            ...(effort === undefined ? {} : { effort }),
+          });
         },
       }),
     ]),
@@ -313,7 +336,24 @@ export interface PstackHostOptions {
  * with the project acme/billing (42), evidence, plan, pstack, and the workflow module with a fake harness action per role.
  */
 export async function pstackHost(options: PstackHostOptions = {}): Promise<PstackHost> {
-  const root = realpathSync(await tempDir("pstack"));
+  // Eval sees the absolute checkout path. Keep the generic niwa-test-* marker out of this fixture.
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "pstack-fixture-")));
+  try {
+    const made = await pstackHostAt(root, options);
+    return { ...made, close: async () => {
+      try {
+        await made.close();
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    } };
+  } catch (error) {
+    rmSync(root, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+async function pstackHostAt(root: string, options: PstackHostOptions): Promise<PstackHost> {
   // As in an installation, the packages pstack runs with are in a node_modules above the home.
   symlinkSync(realpathSync(join(import.meta.dir, "..", "node_modules")), join(root, "node_modules"), "dir");
   const home = join(root, "home");
@@ -322,6 +362,14 @@ export async function pstackHost(options: PstackHostOptions = {}): Promise<Pstac
   mkdirSync(repo);
   gitIn(repo, "init", "-q", "-b", "main");
   writeFileSync(join(repo, "README.md"), "The billing service.\n");
+  writeFileSync(join(repo, ".gitignore"), "/.captures/\n");
+  writeFileSync(join(repo, "tone"), "black\n");
+  writeFileSync(join(repo, "metric"), "10\n");
+  writeFileSync(join(repo, "draw.sh"), [
+    "mkdir -p .captures",
+    "magick -size 2x2 xc:white .captures/reference.png",
+    'magick -size 2x2 "xc:$(cat tone)" .captures/surface.png',
+  ].join("\n") + "\n");
   gitIn(repo, "add", ".");
   gitIn(repo, "commit", "-q", "-m", "start");
 
@@ -352,20 +400,44 @@ export async function pstackHost(options: PstackHostOptions = {}): Promise<Pstac
     requests(),
     timers([]),
     git({ cleanup: false }),
-    fakeProc(),
+    fakeProc(root),
     plugin("box", (api) => {
-      api.action(action("box.net", {
-        description: "A rule allowing a box to reach a host.",
-        input: z.strictObject({ host: z.string().min(1) }),
+      for (const rule of ["box.net", "box.read"]) api.action(action(rule, {
+        description: "A sandbox permission rule.",
+        input: z.strictObject({ place: z.string().min(1) }),
         output: z.strictObject({ held: z.literal(true) }),
         recovery: "repeat",
         effect: "read",
         world: "local",
-        target: (input) => input.host,
+        target: (input) => input.place,
         run: () => ({ held: true as const }),
       }));
     }),
     sessions,
+    plugin("history", (api) => {
+      api.action(action("history.list", {
+        description: "List fixture sessions scoped to a checkout.",
+        input: z.object({ cwd: z.string().optional(), limit: z.number().optional() }),
+        output: z.object({
+          sessions: z.array(z.object({ session: z.object({ harness: z.string(), native: z.string() }), cwd: z.string().optional() })),
+          more: z.boolean(),
+          unreadable: z.array(z.object({ harness: z.string(), reason: z.string() })),
+        }),
+        recovery: "repeat", effect: "read", world: "niwa",
+        run: () => ({ sessions: [], more: false, unreadable: [] }),
+      }));
+      api.action(action(historyRead, {
+        recovery: "repeat", effect: "read", world: "niwa",
+        run: ({ session }) => {
+          try {
+            harnesses.lookup(`${session.harness} ${session.native}`);
+            return { records: [], coverage: { status: "empty" as const } };
+          } catch {
+            return { records: [], coverage: { status: "unavailable" as const, reason: "Unknown fixture session" } };
+          }
+        },
+      }));
+    }),
     plugin("fake-agents", (api) => {
       for (const one of Object.values(agents)) api.action(one);
     }),
@@ -382,7 +454,10 @@ export async function pstackHost(options: PstackHostOptions = {}): Promise<Pstac
     workflow({ agents }),
   );
   await host.serve();
-  const owner = await connectAsOwner(home);
+  const owner = await connectAsOwner(home).catch(async (error: unknown) => {
+    await host.close().catch(() => {});
+    throw error;
+  });
   const worktrees = join(home, "worktrees");
   return {
     host,
@@ -396,13 +471,21 @@ export async function pstackHost(options: PstackHostOptions = {}): Promise<Pstac
     agents: offeredAgents,
     ci,
     fixture: { repo: { host: FORGE_HOST, path: PROJECT, local: repo }, worktrees, base: "main" },
-    answer: async (ids) => {
+    answer: async (run, ids) => {
       let id: string | undefined;
-      await eventually(async () => {
-        const open = (await owner.call("request.open" as never, {} as never)) as { items?: Array<{ id: string }>; requests?: Array<{ id: string }> };
-        id = (open.items ?? open.requests ?? [])[0]?.id;
-        return id !== undefined;
-      }, 20_000, "the owner was not asked");
+      try {
+        await eventually(async () => {
+          const open = (await owner.call("request.open" as never, { to: { kind: "owner" } } as never)) as {
+            requests: Array<{ id?: string; from?: { kind: string; id?: string } }>;
+          };
+          id = open.requests.find(({ from }) => from?.kind === "client" && from.id === `run:${run}`)?.id;
+          return id !== undefined;
+        }, 20_000, "the owner was not asked");
+      } catch (error) {
+        const inspection = await host.call("workflow.inspect" as never, { run } as never)
+          .then((result) => (result as { status: unknown }).status, (failure) => String(failure));
+        throw new Error(`Owner request for ${run}: ${String(error)}. Run state: ${JSON.stringify(inspection).slice(0, 2000)}`, { cause: error });
+      }
       await owner.call("request.answer" as never, { id, answer: { ids } } as never);
     },
     asOwner: async (name, input) => await owner.call(name as never, input as never),
@@ -470,26 +553,119 @@ export function defaultAnswers(made: PstackHost): Answers {
     return { outcome: "pass", evidence };
   };
   const hypotheses = () => ({ cause: "The README was not updated.", hypotheses: [{ claim: "The README was not updated", status: "confirmed", evidence: "README.md:1" }] });
+  const featureDesign = { shape: "A section of the README.", rationale: "One file", scope: ["README.md"], checks: ["Read the section"] };
+  const bench = 'printf \'{"metric":%s,"errors":0,"work":100,"surface":"CLI","driver":"fixture"}\\n\'';
+  const profilePath = ".captures/profile.json";
+  const profile = (symbol: string, duration: string) =>
+    `mkdir -p .captures && printf '{"nodes":[{"id":1,"callFrame":{"functionName":"${symbol}","url":"README.md","lineNumber":0}}],"samples":[1],"timeDeltas":[%s]}\\n' ${duration} > "${profilePath}"`;
+  const publish = (cwd: string) => {
+    const sha = gitIn(cwd, "rev-parse", "HEAD");
+    made.project.branches.set(gitIn(cwd, "branch", "--show-current"), sha);
+    return sha;
+  };
   return {
     "entry:route": () => ({ kind: "run", playbook: "investigation", task: "Where does this repository describe itself?", more: {} }),
     "investigation:trace": () => ({ summary: "The README says what the service is.", sources: [{ file: "README.md", line: 1 }] }),
-    "multi-phase-plan:plan": (call) => ({ kind: "plan", goal: "Deliver the task", nodes: /stack|building on|builds on/i.test(call.prompt.slice(call.prompt.lastIndexOf("Task:"))) ? STACK : PARALLEL }),
+    "investigation:unslop": ({ prompt }) => JSON.parse(prompt.split("\n").find((line) => line.startsWith('{"summary":'))!),
+    "multi-phase-plan:plan": (call) => {
+      const task = call.prompt.slice(call.prompt.lastIndexOf("Task:"));
+      const nodes = /stack|building on|builds on/i.test(task) ? STACK : PARALLEL;
+      return {
+        kind: "plan",
+        goal: "Deliver the task",
+        nodes: nodes.map((node) => ({
+          ...node,
+          verification: {
+            unit: `Check the syntax of ${node.files.join(", ")}.`,
+            live: { scenario: node.text, pass: "Open the changed document and verify its expected content." },
+            perf: {
+              metric: "Documentation build time",
+              probe: "Time a clean documentation build.",
+              trunk: "Measure a clean build on main first.",
+              fail: "Build time increases by more than 10%.",
+            },
+          },
+        })),
+      };
+    },
     "*:build": (call) => ({ sha: commit(call), summary: `Added change ${String(changes)}.` }),
     "*:verify-gates": verify("the gates passed"),
     "*:verify-live": verify("the page renders"),
+    "*:gate-review": () => ({ kind: "unchanged", proof: "The committed patch changes documentation only." }),
     "trace-forensics:investigate": hypotheses,
-    "runtime-forensics:investigate": hypotheses,
-    "feature:frame": () => ({ shape: "A section of the README.", checkpoint: { blocking: "n/a: one file", independent: "n/a: one file", shared: "n/a: none", decomposition: "one worker: one file" } }),
-    "bug-fix:frame": () => ({ repro: "read README.md", cause: "a typo", evidence: "README.md:1" }),
-    "refactoring:frame": () => ({ contract: "The README reads the same.", pin: "test -f README.md", target: "One section per topic." }),
+    "runtime-forensics:capture-plan": () => ({
+      kind: "capture", target: "README reader", surface: "CLI", driver: "fixture",
+      signal: profile("read", "10"), path: profilePath,
+      setup: "touch .captures/active", observe: "test -f .captures/active && echo active",
+      control: "test -f README.md && echo quiet", cleanup: "rm .captures/active", expected: "active", controlExpected: "quiet",
+    }),
+    "runtime-forensics:investigate": () => ({
+      cause: "The fixture reader is active.",
+      hypotheses: [{ claim: "The fixture reader is active.", status: "confirmed", evidence: "The capture and repeated observation identify the reader." }],
+      source: { file: "README.md", symbol: "read", line: 1 }, route: "bug-fix",
+    }),
+    "feature:frame": () => ({ kind: "direct", trace: "README", design: featureDesign, whyOnlyOne: "No code or data model changes", contested: false, checkpoint: { blocking: "n/a: one file", independent: "n/a: one file", shared: "n/a: none", decomposition: "one worker: one file" } }),
+    "feature:architect": () => featureDesign,
+    "feature:approve-design": () => ({ kind: "proceed", design: featureDesign, resolution: "Keep the existing README structure." }),
+    "feature:integrate": ({ cwd }) => ({
+      sha: commitFile(cwd!, "README.md", "The billing service.\n\nThis guide explains billing.\n"),
+      observed: "Added the billing guide introduction",
+    }),
+    "bug-fix:frame": () => ({
+      kind: "confirmed", crossesBoundary: false, repro: "read README.md", cause: "a typo", evidence: "README.md:1",
+      history: "The initial fixture commit introduced the wording", surface: "README.md", driver: "grep",
+      replay: { command: "if grep -q 'The billing service' README.md; then echo wording; exit 1; fi", failingSignal: "wording" },
+      regression: { kind: "skip", reason: "The fixture has no regression test runner" },
+    }),
+    "bug-fix:fix": ({ cwd }) => {
+      if (cwd === undefined) throw new Error("the bug fix author has no checkout");
+      commitFile(cwd, "README.md", "A billing service.\n");
+      return { summary: "Fix wording" };
+    },
+    "*:publish": ({ cwd }) => ({ sha: publish(cwd!) }),
+    "refactoring:frame": () => ({ kind: "reshape", crossesBoundary: false, contract: "The README reads the same.", pin: "test -f README.md", target: "One section per topic." }),
+    "refactoring:characterize": () => ({
+      predicate: "The README is unchanged", probe: ["cat", "README.md"],
+      phases: [{ hypothesis: "Separate the implementation from its contract", change: "Add the implementation note" }],
+    }),
+    "refactoring:reshape": ({ cwd }) => {
+      if (cwd === undefined) throw new Error("the refactoring author has no checkout");
+      return { sha: commitFile(cwd, "implementation.txt", "The reader implementation.\n"), observed: "Moved the implementation" };
+    },
+    "refactoring:reader-load": () => ({ keep: true, why: "The implementation has one place to look" }),
     "authoring-a-skill:frame": () => ({ skill: "readme-style", decisions: ["short"], validation: "frontmatter has a name" }),
-    "visual-parity:frame": () => ({ reference: "the design", surface: "the README", differences: ["the heading"] }),
-    "perf-issue:frame": () => ({ measure: "ls | wc -l", direction: "higher", target: 1 }),
+    "authoring-a-skill:create-skill": () => ({
+      path: "SKILL.md", guidance: "Keep README changes short and grounded in the existing page.",
+      cases: { kind: "structural", commands: [["grep", "-q", "name: readme-style", "SKILL.md"]] },
+    }),
+    "authoring-a-skill:author-skill": ({ cwd }) => ({
+      sha: commitFile(cwd!, "SKILL.md", "---\nname: readme-style\ndescription: Update the billing README.\n---\nRead the [guide](README.md).\n"),
+      observed: "Added the README editing skill",
+    }),
+    "visual-parity:frame": () => ({
+      kind: "ready", reference: "White surface", surface: "Synthetic image capture", baseline: "draw.sh", differences: ["The background"],
+      command: "sh -e draw.sh", protectedPaths: ["draw.sh"], shared: null,
+      components: [{ id: "background", paths: ["tone"], states: [{ name: "default", reference: ".captures/reference.png", actual: ".captures/surface.png" }] }],
+    }),
+    "visual-parity:component": ({ cwd }) => ({ summary: commitFile(cwd!, "tone", "white\n") }),
+    "perf-issue:frame": () => ({
+      measure: bench + ' "$(cat metric)"', direction: "lower", target: 6, crossesBoundary: false,
+      workload: {
+        surface: "CLI", driver: "fixture", unit: "steps", workload: "100 records", limiter: "Extra steps",
+        comparability: "Same input and counters", easier: bench + " 2", profile: profile("measure", '"$(cat metric)"'), profilePath,
+        gate: "test -s metric", harnessPaths: [],
+      },
+    }),
+    "perf-issue:performance-plan": () => ({
+      attempts: [{ mantra: "remove", hypothesis: "Remove the repeated stages", crossesBoundary: false }],
+      skipped: "Other categories leave the same repeated stages",
+    }),
+    "perf-issue:attempt": ({ cwd }) => ({ summary: commitFile(cwd!, "metric", "5\n") }),
     "autonomous-run:attempt": (call) => ({ change: `committed ${commit(call)}` }),
     "hillclimb:attempt": (call) => ({ hypothesis: `one more note: ${commit(call)}` }),
     "prototype:scope": () => ({ kind: "decide", decision: "What the README leads with", variants: [{ name: "usage", idea: "Usage first" }, { name: "architecture", idea: "Architecture first" }] }),
     "prototype:build": (call) => ({ observed: `built in ${call.cwd ?? ""}` }),
-    "prototype:recommend": () => ({ recommend: "usage", why: "A reader wants to run it first." }),
+    "prototype:recommend": () => ({ kind: "pick", recommend: "usage", why: "A reader wants to run it first." }),
     "eval:frame": () => ({
       success: "The explanation is right and short.",
       rubric: [
@@ -500,18 +676,29 @@ export function defaultAnswers(made: PstackHost): Answers {
       cases: [{ id: "readme", prompt: "What is this repository for?" }],
     }),
     // Prompts with no tag: an eval's candidates, which must not see they are graded, and its grader.
-    "": (call) => {
-      if (!call.prompt.startsWith("Grade the subject")) return { answer: "It is the billing service." };
-      const ids = [...call.prompt.matchAll(/^- ([a-z][a-z0-9-]*): /gm)].map((found) => found[1] as string);
-      return { scores: ids.map((id) => ({ id, score: 1 })) };
+    "": ({ prompt, cwd }) => {
+      if (prompt.startsWith("Publish the existing commit")) {
+        publish(cwd!);
+        return { published: true };
+      }
+      if (!prompt.startsWith("Grade all labeled outputs")) return { answer: "It is the billing service." };
+      const rows = JSON.parse(prompt.split("\n\n").at(-1)!) as Array<{ label: string }>;
+      return { grades: rows.map(({ label }) => ({ label, scores: { right: 1, short: 1, plain: 1 }, rationale: "Matches the fixture README" })) };
     },
-    "opening-a-pr:write": () => ({ title: "docs(readme): add the page", sections: [{ heading: "Why", body: "The page needs it." }, { heading: "Verification", body: "Read it." }] }),
-    "pause-safely:checkpoint": (call) => {
-      commit(call);
+    "eval:synthesis": () => ({ recommendation: null, rationale: "Both answers match the fixture README" }),
+    "opening-a-pr:write": () => ({
+      title: "docs(readme): add the page",
+      sections: [
+        { heading: "Why", body: "The page needs it." },
+        { heading: "What changed", body: "Updated the page." },
+        { heading: "Verification", body: "Read it." },
+      ],
+    }),
+    "pause-safely:checkpoint": () => {
       return { intent: "Add the page", state: "half done", verified: [], next: "finish the page", files: ["page.md"], gotchas: [] };
     },
     "benny-triage:triage": () => ({ verdict: "bug", owner: "the README", summary: "The README names the wrong service." }),
-    "benny-reproduce:reproduce": () => ({ reproduced: true, runs: ["The README says payroll.", "It still says payroll."] }),
+    "benny-reproduce:reproduce": () => ({ kind: "reproduced", runs: ["The README says payroll.", "It still says payroll."] }),
     // What a boxed author does for the sync: it reads the report in its worktree and settles the touched entries as carried.
     "upstream-sync:round": (call) => {
       const report = JSON.parse(readFileSync(join(call.cwd as string, ".upstream-map-report.json"), "utf8")) as { entries: Array<{ id: string; status: string }> };
