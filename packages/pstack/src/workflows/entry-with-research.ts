@@ -1,0 +1,65 @@
+import type { ScriptApi } from "@niwa-labs/script";
+
+import { input, output, run } from "./lib/entry.ts";
+
+declare const workflow: ScriptApi["workflow"];
+
+export default workflow(
+  {
+    name: "pstack-entry",
+    description: "Pick the playbook a request needs and run it",
+    input,
+    output,
+    uses: [
+      "pstack.pr.binding",
+      "forge.pr.merge@{repo.host}/{repo.path}/pr/*",
+      "pstack.pr.bind",
+      "forge.pr.ensure@{repo.host}/{repo.path}/pr/*",
+      "proc.run@{worktrees}/*",
+      "proc.run@{repo.local}",
+      "proc.run@{worktrees}",
+      "git.*@{repo.local}",
+      // The git module's actions carry no target, so the rule above cannot reach them: worktrees are named here.
+      "git.worktree.create",
+      "git.worktree.get",
+      "git.worktree.list",
+      "git.worktree.remove",
+      "history.list",
+      "history.read",
+      "forge.pr.list",
+      "forge.pr.read@{repo.host}/{repo.path}",
+      "forge.checks.read@{repo.host}/{repo.path}",
+      "forge.pipeline.read@{repo.host}/{repo.path}",
+      "forge.pipeline.retry@{repo.host}/{repo.path}/ref/*",
+      "forge.comment.read@{repo.host}/{repo.path}",
+      "forge.comment.reply@{repo.host}/{repo.path}/pr/*",
+      "forge.comment.resolve@{repo.host}/{repo.path}/pr/*",
+      "pstack.roles",
+      "session.start.*",
+      "harness.list",
+      "session.start",
+      "pstack.author.options",
+      "box.net@{repo.host}",
+      "session.ask",
+      "session.end",
+      "request.ask",
+      "workflow.list",
+      "workflow.start",
+      "workflow.pause",
+      "niwa.records.read",
+      "evidence.attest",
+      "evidence.covers",
+      "evidence.list",
+      "plan.set",
+      "plan.get",
+      "pstack.feature.research.settings",
+      "pstack.feature.research.report@{repo.local}",
+      "box.read@{repo.local}",
+    ],
+    phases: [
+      { title: "Route", detail: "The lead picks the playbook" },
+      { title: "Run", detail: "The playbook runs as a child of the entry" },
+    ],
+  },
+  run,
+);

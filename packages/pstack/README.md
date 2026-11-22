@@ -39,6 +39,56 @@ modules before it and the workflow module after it. `bind` is the binding of the
 (`addressingOf`), so a session attests under one address for its whole life and an agent's session as the agent. Without
 `benny`, none of the ports below is needed.
 
+### Optional research before Feature planning
+
+Save this as `composition.ts` on a host with authenticated Claude Code, Codex and NCode installations.
+Put the forge token in `$NIWA_HOME/secrets/GITLAB_TOKEN` and run `niwa serve composition.ts`.
+
+```ts
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { HarnessInstanceRegistry, claudeCodeKind, codexKind, defaultComposition, ncodeKind, secret } from "@niwa-labs/niwa";
+import { addressingOf, codeResearch, pstack } from "@niwa-labs/pstack";
+
+const home = process.env.NIWA_HOME ?? join(homedir(), ".niwa");
+const harnesses = new HarnessInstanceRegistry();
+harnesses.register(claudeCodeKind.bind({ id: "claude" }));
+harnesses.register(codexKind.bind({ id: "codex" }));
+harnesses.register(ncodeKind.bind({ id: "ncode-flash" }));
+
+const base = defaultComposition({ home, harnesses });
+export default [
+  ...base.filter((part) => part.name !== "workflow"),
+  ...pstack({
+    bind: addressingOf(base),
+    forge: { servers: [{ host: "gitlab.example.com", url: "https://gitlab.example.com", token: secret("GITLAB_TOKEN") }] },
+    roles: {
+      lead: { harness: "claude" },
+      author: { harness: "codex", box: true },
+      reviewer: { harness: "claude" },
+      verifier: { harness: "ncode-flash" },
+    },
+    extensions: [codeResearch({ harness: "ncode-flash" })],
+  }),
+  ...base.filter((part) => part.name === "workflow"),
+];
+```
+
+The extension declares `feature.beforePlan`. Set `model` and `effort` in `codeResearch()`
+to override the harness installation's defaults. Contributions run serially in configuration order.
+Give additional contributions unique `name` values. Their names determine their durable step labels.
+
+Entry routes the request first. Feature then runs the same research steps whether Entry started it or you
+started it directly. Each researcher gets a read-only repository mount and returns Markdown as a structured
+answer. Niwa stores the report separately as an artifact. The planner receives the task, the report's digest
+and the Markdown read back from disk. A failed turn or unavailable report blocks planning.
+
+The research-enabled Feature and Entry versions follow the usual Suite promotion process.
+Use a canonical absolute checkout path for `repo.local`, as the run's additional grants are scoped to that path.
+A fresh host with an empty `extensions` list uses the original grants and skips research. On an existing home,
+Niwa keeps the accepted versions until it promotes a candidate. Use a separate home when switching back
+to a previously accepted variant, which Niwa does not register again as a candidate.
+
 ## Roles
 
 - `lead` frames, routes and judges, read-only.

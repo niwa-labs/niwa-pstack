@@ -5,6 +5,8 @@
 
 export { PSTACK_NEEDS, pstack } from "./composition.ts";
 export type { PstackCompositionOptions } from "./composition.ts";
+export { codeResearch } from "./extensions.ts";
+export type { CodeResearchOptions, PstackExtension } from "./extensions.ts";
 export { addressingOf } from "./binding.ts";
 export type { Binding } from "./binding.ts";
 export { AuthorRefusal, authorLaunch } from "./author.ts";

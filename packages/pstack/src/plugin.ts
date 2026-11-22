@@ -10,9 +10,12 @@ import type { Plugin } from "@niwa-labs/plugin";
 
 import { authorLaunch, worktreesOf } from "./author.ts";
 import { SUITE_BUILTIN, gatedOf, scriptOf } from "./catalog.ts";
+import { researchSettings } from "./extensions.ts";
+import type { PstackExtension } from "./extensions.ts";
 import { BENNY_PORTS, PORT_ACTIONS } from "./ports.ts";
 import { BennyReported, bennyReport, pstackAuthorOptions, pstackRoles } from "./records.ts";
 import { registerPrBindings } from "./pr-binding.ts";
+import { registerResearch } from "./research-actions.ts";
 import { Roles } from "./roles.ts";
 import { upstreamActions } from "./upstream-actions.ts";
 import type { RolesInput } from "./roles.ts";
@@ -21,6 +24,8 @@ import type { RolesInput } from "./roles.ts";
 export interface PstackOptions {
   /** The seats of the lead, the author, the reviewer, the verifier and the judge. */
   readonly roles: RolesInput;
+  /** Feature research contributions, run in this order. Names must be unique. */
+  readonly extensions?: readonly PstackExtension[];
   /** The forge hosts an author's box can add when the caller's grant allows them. */
   readonly forges?: readonly string[];
   /** Benny, who triages issue reports and reproduces and fixes confirmed bugs: off unless given. */
@@ -55,6 +60,8 @@ const BENNY_PROMPT = [
 export function pstackPlugin(options: PstackOptions): Plugin {
   const roles = Roles.parse(options.roles);
   const forges = [...(options.forges ?? [])];
+  const research = researchSettings(options.extensions ?? []);
+  const withResearch = research.length > 0;
   return plugin("pstack", (api) => {
     if (options.benny !== undefined) {
       const lacking = BENNY_PORTS.filter((port) => api.offers(port.key).length === 0);
@@ -66,9 +73,12 @@ export function pstackPlugin(options: PstackOptions): Plugin {
       }
     }
     for (const one of gatedOf(options.benny !== undefined)) {
-      api.offer(BUILTIN_WORKFLOW, { name: one.name, file: scriptOf(one.name), description: one.description, gated: true, ...(one.triggers === undefined ? {} : { triggers: one.triggers }) });
+      // Entry and Suite need the same scoped rules as the Feature child they can start.
+      const script = withResearch && (one.name === "feature" || one.name === "entry") ? `${one.name}-with-research` : one.name;
+      api.offer(BUILTIN_WORKFLOW, { name: one.name, file: scriptOf(script), description: one.description, gated: true, ...(one.triggers === undefined ? {} : { triggers: one.triggers }) });
     }
-    api.offer(BUILTIN_WORKFLOW, { ...SUITE_BUILTIN, file: scriptOf(SUITE_BUILTIN.name), suite: true });
+    api.offer(BUILTIN_WORKFLOW, { ...SUITE_BUILTIN, file: scriptOf(withResearch ? "suite-with-research" : SUITE_BUILTIN.name), suite: true });
+    if (withResearch) registerResearch(api, research);
     registerPrBindings(api);
     for (const one of upstreamActions(() => api.home())) api.action(one);
     api.action(action(pstackRoles, { recovery: "repeat", effect: "read", world: "niwa", run: () => roles }));

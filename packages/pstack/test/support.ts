@@ -24,6 +24,7 @@ import { FakeGitLab, sha } from "../node_modules/@niwa-labs/forge/test/fake-gitl
 import type { FakeProject } from "../node_modules/@niwa-labs/forge/test/fake-gitlab.ts";
 import { addressingOf } from "../src/binding.ts";
 import type { Binding } from "../src/binding.ts";
+import type { PstackExtension } from "../src/extensions.ts";
 import { pstackPlugin } from "../src/plugin.ts";
 import type { RolesInput } from "../src/roles.ts";
 import { fakePorts } from "./ports.ts";
@@ -323,6 +324,7 @@ export interface PstackHostOptions {
   readonly benny?: false;
   /** The role seats, when a test needs specific harnesses or vendors. */
   readonly roles?: RolesInput;
+  readonly extensions?: readonly PstackExtension[];
   /** The providers of Benny's ports that are left out, as a host that lacks them would be. */
   readonly withoutPorts?: ReadonlyArray<"tracker" | "channel" | "control">;
   /** How the pipelines a new pull request gets end: its head's and its merge result's. Default: both succeed. */
@@ -387,7 +389,7 @@ async function pstackHostAt(root: string, options: PstackHostOptions): Promise<P
   const ports = fakePorts(options.withoutPorts ?? []);
   const ci = { head: options.ci?.head ?? "success", mergeResult: options.ci?.mergeResult ?? "success" };
   const host = createNiwa({ home });
-  const pstack = pstackPlugin({ roles: options.roles ?? ROLES, forges: [FORGE_HOST], ...(options.benny === false ? {} : { benny: { repo: { host: FORGE_HOST, path: PROJECT, local: repo } } }) });
+  const pstack = pstackPlugin({ roles: options.roles ?? ROLES, forges: [FORGE_HOST], ...(options.extensions === undefined ? {} : { extensions: options.extensions }), ...(options.benny === false ? {} : { benny: { repo: { host: FORGE_HOST, path: PROJECT, local: repo } } }) });
   if (options.onlyBuiltins) {
     const setup = pstack.setup;
     pstack.setup = api => setup({ ...api, offer(key, value) {
