@@ -211,7 +211,9 @@ pack. `upstream/mapping.json` records what became of it in pstack, an entry to a
   code of ours implements and a prompt leaves out is `dropped`, and its note says where the code is. `check` reads the
   texts as they are on disk and holds each to the map (see below).
 
-The tool is `bun packages/pstack/scripts/upstream-map.ts`:
+Run `bun packages/pstack/scripts/upstream-map.ts` from the repository root.
+The entry configures the pstack snapshot and generated texts for the shared
+`@niwa-labs/upstream-map` package. The commands are:
 
 | Command | What it does |
 |---|---|

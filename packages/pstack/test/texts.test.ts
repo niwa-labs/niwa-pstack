@@ -6,9 +6,8 @@ import { readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { OursTexts, UpstreamTexts, analyze, assemble, jsonOf, parseMapping, verifyTextsIn } from "../src/mapping/index.ts";
-import { Git } from "../src/mapping/git.ts";
-import { MAPPING_FILE, PACKAGE_DIR, TEXTS_DIR, UPSTREAM_DIR } from "../src/upstream.ts";
+import { Git, OursTexts, analyze, assemble, jsonOf, parseMapping, verifyTextsIn } from "@niwa-labs/upstream-map";
+import { MAPPING_FILE, PACKAGE_DIR, TEXTS_DIR, UPSTREAM_DIR, UpstreamTexts } from "../src/upstream.ts";
 
 const WORKFLOWS = join(PACKAGE_DIR, "src", "workflows");
 const mapping = parseMapping(readFileSync(MAPPING_FILE, "utf8"));

@@ -5,15 +5,15 @@ import { expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { differingTexts, openMap, recordMap, summaryOf, writeAssembled } from "../src/mapping/index.ts";
-import { pathsIn, refreshUpstream } from "../src/upstream.ts";
+import { differingTexts, openMap, recordMap, summaryOf, writeAssembled } from "@niwa-labs/upstream-map";
+import { refreshUpstream, upstreamMapConfig } from "../src/upstream.ts";
 import { commitFiles, git } from "./mapping-support.ts";
 import { UPSTREAM_FILES_V1, packageRepo, upstreamCheckout } from "./package-layout.ts";
 
 test("a package folder is measured, its texts assembled, and a changed upstream carried, with nothing read from this package", async () => {
   const up = await upstreamCheckout();
   const { root, packageDir } = await packageRepo(up.dir, up.commit);
-  const ctx = { paths: pathsIn(packageDir), root, checkout: up.dir };
+  const ctx = { ...upstreamMapConfig(packageDir), root, checkout: up.dir };
 
   // The map is sound; the two texts it puts into prompts are not written yet, and that is counted apart.
   const first = summaryOf(openMap(ctx).report);
@@ -26,7 +26,7 @@ test("a package folder is measured, its texts assembled, and a changed upstream 
 
   // Upstream moves on: the snapshot is taken again, one block is touched, the text of it lags until it is assembled.
   commitFiles(up.dir, { "skills/poteto-mode/worker.md": "Work for the operator, always.\n" }, "reword");
-  refreshUpstream(up.dir, { upstream: pathsIn(packageDir).upstream });
+  refreshUpstream(up.dir, { upstream: ctx.paths.upstream });
   git(root, "add", "-A");
   git(root, "commit", "-q", "-m", "take the snapshot");
   const touched = summaryOf(openMap(ctx).report);
@@ -42,7 +42,6 @@ test("a package folder is measured, its texts assembled, and a changed upstream 
 test("recording refuses a map that has problems", async () => {
   const up = await upstreamCheckout();
   const { root, packageDir } = await packageRepo(up.dir, up.commit);
-  const paths = pathsIn(packageDir);
   commitFiles(root, { "packages/pstack/upstream/mapping.json": '{"entries":[{"id":"x","upstream":{"commit":"' + up.commit + '","file":"poteto-mode/none.md","range":[0,5]},"ours":[],"kind":"dropped","note":"n"}]}' }, "break the map");
-  expect(() => recordMap({ paths, root, checkout: up.dir }, "unchanged")).toThrow("problems");
+  expect(() => recordMap({ ...upstreamMapConfig(packageDir), root, checkout: up.dir }, "unchanged")).toThrow("problems");
 });

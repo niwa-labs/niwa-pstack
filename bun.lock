@@ -22,6 +22,7 @@
         "@niwa-labs/plan": "*",
         "@niwa-labs/plugin": "*",
         "@niwa-labs/script": "*",
+        "@niwa-labs/upstream-map": "*",
         "@niwa-labs/watch": "*",
         "@niwa-labs/workflow": "*",
         "zod": "^4.6.7",
@@ -58,6 +59,7 @@
     "@niwa-labs/testing": "link:../niwa/packages/testing",
     "@niwa-labs/timer": "link:../niwa/packages/timer",
     "@niwa-labs/ui-kit": "link:../niwa/packages/ui-kit",
+    "@niwa-labs/upstream-map": "link:../niwa/packages/upstream-map",
     "@niwa-labs/watch": "link:../plugins/packages/watch",
     "@niwa-labs/workflow": "link:../niwa/packages/workflow",
   },
@@ -85,6 +87,8 @@
     "@niwa-labs/sessions": ["@niwa-labs/sessions@link:../niwa/packages/sessions", {}],
 
     "@niwa-labs/testing": ["@niwa-labs/testing@link:../niwa/packages/testing", {}],
+
+    "@niwa-labs/upstream-map": ["@niwa-labs/upstream-map@link:../niwa/packages/upstream-map", {}],
 
     "@niwa-labs/watch": ["@niwa-labs/watch@link:../plugins/packages/watch", {}],
 

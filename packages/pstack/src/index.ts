@@ -46,5 +46,5 @@ export { AuthorRole, Roles, SeatRole } from "./roles.ts";
 export type { RolesInput } from "./roles.ts";
 export { refreshUpstream, playbookNames } from "./upstream.ts";
 export type { UpstreamSource } from "./upstream.ts";
-export { accept, advance, analyze, assemble, formatMapping, formatReport, parseMapping } from "./mapping/index.ts";
-export type { AssembledText, Mapping, Report } from "./mapping/index.ts";
+export { accept, advance, analyze, assemble, formatMapping, formatReport, parseMapping } from "@niwa-labs/upstream-map";
+export type { AssembledText, Mapping, Report } from "@niwa-labs/upstream-map";

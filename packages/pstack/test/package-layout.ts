@@ -6,8 +6,8 @@ import { join } from "node:path";
 
 import { tempDir } from "@niwa-labs/testing";
 
-import { formatMapping } from "../src/mapping/index.ts";
-import type { Entry } from "../src/mapping/index.ts";
+import { formatMapping } from "@niwa-labs/upstream-map";
+import type { Entry } from "@niwa-labs/upstream-map";
 import { refreshUpstream } from "../src/upstream.ts";
 import { commitFiles, git } from "./mapping-support.ts";
 

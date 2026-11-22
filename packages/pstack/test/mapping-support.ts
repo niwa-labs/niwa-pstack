@@ -6,9 +6,9 @@ import { dirname, join } from "node:path";
 
 import { tempDir } from "@niwa-labs/testing";
 
-import { OursTexts, UpstreamTexts } from "../src/mapping/index.ts";
-import type { Entry, Mapping, Span } from "../src/mapping/index.ts";
-import { refreshUpstream } from "../src/upstream.ts";
+import { OursTexts } from "@niwa-labs/upstream-map";
+import type { Entry, Mapping, Span } from "@niwa-labs/upstream-map";
+import { UpstreamTexts, refreshUpstream } from "../src/upstream.ts";
 
 const ENV = { GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1", GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t.invalid", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t.invalid" };
 

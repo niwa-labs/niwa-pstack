@@ -41,6 +41,7 @@
     "@niwa-labs/testing": "link:../niwa/packages/testing",
     "@niwa-labs/timer": "link:../niwa/packages/timer",
     "@niwa-labs/ui-kit": "link:../niwa/packages/ui-kit",
+    "@niwa-labs/upstream-map": "link:../niwa/packages/upstream-map",
     "@niwa-labs/watch": "link:../plugins/packages/watch",
     "@niwa-labs/workflow": "link:../niwa/packages/workflow"
   }

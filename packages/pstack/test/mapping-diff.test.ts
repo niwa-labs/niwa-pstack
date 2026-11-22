@@ -2,7 +2,7 @@
 
 import { expect, test } from "bun:test";
 
-import { carry, diffText } from "../src/mapping/diff.ts";
+import { carry, diffText } from "@niwa-labs/upstream-map";
 
 const OLD = "# Title\n\nFirst paragraph.\n\nSecond paragraph.\n\nThird paragraph.\n";
 

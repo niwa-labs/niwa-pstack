@@ -3,7 +3,7 @@
 
 import { expect, test } from "bun:test";
 
-import { accept, advance, analyze, assemble, formatMapping, formatReport, parseMapping } from "../src/mapping/index.ts";
+import { accept, advance, analyze, assemble, formatMapping, formatReport, parseMapping } from "@niwa-labs/upstream-map";
 import { OURS_FILES, UPSTREAM_FILES, World, at, git, mapping } from "./mapping-support.ts";
 
 const SKILL = "skills/poteto-mode/SKILL.md";

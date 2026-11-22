@@ -7,8 +7,8 @@ import { join } from "node:path";
 
 import { tempDir } from "@niwa-labs/testing";
 
-import { analyze, assemble, jsonOf, parseMapping, verifyTextsIn, writeTexts } from "../src/mapping/index.ts";
-import type { Entry } from "../src/mapping/index.ts";
+import { analyze, assemble, jsonOf, parseMapping, verifyTextsIn, writeTexts } from "@niwa-labs/upstream-map";
+import type { Entry } from "@niwa-labs/upstream-map";
 import { OURS_FILES, UPSTREAM_FILES, World, mapping } from "./mapping-support.ts";
 
 const BUG_FIX = "poteto-mode/playbooks/bug-fix.md";

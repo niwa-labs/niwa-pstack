@@ -11,11 +11,11 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { action } from "@niwa-labs/core";
 import type { Action } from "@niwa-labs/core";
+import { Git, openMap, recordMap, summaryOf, unreadable, writeAssembled } from "@niwa-labs/upstream-map";
+import type { ToolContext } from "@niwa-labs/upstream-map";
 
 import { worktreePlace, worktreesOf } from "./author.ts";
-import { Git, openMap, recordMap, summaryOf, unreadable, writeAssembled } from "./mapping/index.ts";
-import type { ToolContext } from "./mapping/index.ts";
-import { pathsIn, refreshUpstream } from "./upstream.ts";
+import { refreshUpstream, upstreamMapConfig } from "./upstream.ts";
 import {
   pstackUpstreamAssemble,
   pstackUpstreamCommit,
@@ -49,7 +49,7 @@ function checkoutOf(checkout: string): string {
 /** What the tool is given for a step: the package folder of the worktree, the worktree as the repository's root, the checkout. */
 function contextOf(home: string, input: { place: string; package: string; checkout: string }): { place: string; ctx: ToolContext } {
   const place = worktreePlace("the upstream sync", input.place, worktreesOf(home));
-  return { place, ctx: { paths: pathsIn(inside(place, input.package, "the package folder")), root: place, checkout: checkoutOf(input.checkout) } };
+  return { place, ctx: { ...upstreamMapConfig(inside(place, input.package, "the package folder")), root: place, checkout: checkoutOf(input.checkout) } };
 }
 
 /** The upstream sync's actions, for a host whose niwa home is `home()`. */

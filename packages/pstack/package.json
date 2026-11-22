@@ -19,6 +19,7 @@
     "@niwa-labs/plan": "*",
     "@niwa-labs/plugin": "*",
     "@niwa-labs/script": "*",
+    "@niwa-labs/upstream-map": "*",
     "@niwa-labs/watch": "*",
     "@niwa-labs/workflow": "*",
     "zod": "^4.6.7"
